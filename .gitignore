@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# OS
+.DS_Store
+
+# Secrets & credentials
+token.json
+client_secret_*.json
+config/workflow_config.py
+
+# Generated figures (regenerate via workflow)
+figures/*
+!figures/.gitkeep
+
+# Data files (too large for git)
+data/*
+!data/.gitkeep
+
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+# Movies
+*.mp4

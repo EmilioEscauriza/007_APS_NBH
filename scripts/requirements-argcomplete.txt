@@ -1,0 +1,3 @@
+# Optional: for shell tab completion of this script's CLI.
+# Install: pip install -r requirements-argcomplete.txt
+argcomplete>=3.0.0

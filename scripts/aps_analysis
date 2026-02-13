@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# Wrapper so "aps_analysis <TAB>" triggers argcomplete (completion is not triggered for "python script.py").
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+export PYTHONPATH="${SCRIPT_DIR}/../source:${PYTHONPATH}"
+exec python "${SCRIPT_DIR}/CLI-analysis_for_aps_08-ide-2025-1006.py" "$@"
