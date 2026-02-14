@@ -7,9 +7,9 @@ Usage:
   python analysis_for_aps_08-ide-2025-1006.py <command> --help
 
 Tab completion (optional, pip only): use the wrapper so Tab works (completion does not run for "python script.py").
-  pip install -r emilio_scripts/python_scripts/requirements-argcomplete.txt
+  pip install -r requirements.txt
   activate-global-python-argcomplete   # one-time, or: activate-global-python-argcomplete --dest=- >> ~/.zshrc
-  source emilio_scripts/python_scripts/argcomplete-setup.sh   # add to ~/.zshrc
+  source CLI/argcomplete-setup.sh   # add to ~/.zshrc
   Then run: aps_analysis <TAB>  (from that dir, or add the dir to PATH)
 """
 import argparse
@@ -311,8 +311,8 @@ def oauth_test():
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive",
     ]
-    credentials = ('/Users/emilioescauriza/Documents/repos/006_APS_8IDE/emilio_scripts/python_scripts/client_secret_'
-                  '180145739842-0ug37lsh4qltki62e8te8bqkde9u25jb.apps.googleusercontent.com.json')
+    credentials = str(Path(__file__).resolve().parent.parent / "workflow" /
+                  'client_secret_180145739842-0ug37lsh4qltki62e8te8bqkde9u25jb.apps.googleusercontent.com.json')
 
     def get_creds():
         creds = None
@@ -1689,9 +1689,10 @@ def save_inferred_qphi_maps_npz(
 DEFAULT_FILE_ID = "A073"
 DEFAULT_BASE_DIR = Path("/Volumes/EmilioSD4TB/APS_08-IDEI-2025-1006/Twotime_PostExpt_01")
 # Overrides for specific file_ids when not using base_dir glob
+_CLI_DIR = Path(__file__).resolve().parent
+_REPO_ROOT = _CLI_DIR.parent
 FILE_ID_OVERRIDES = {
-    "A013": Path("/Users/emilioescauriza/Desktop/A013_IPA_NBH_1_att0100_079K_001_results.hdf"),
-    "A073": Path("/Users/emilioescauriza/Desktop/Twotime_PostExpt_01/A073_IPA_NBH_1_att0100_260K_001_results.hdf"),
+    "A073": _REPO_ROOT / "data" / "A073" / "Twotime_PostExpt_01" / "A073_IPA_NBH_1_att0100_260K_001_results.hdf",
 }
 
 # Set by CLI or for backward compatibility when run without CLI
@@ -1988,7 +1989,7 @@ def exec_bragg_peak_brightest(
         scattering_2d = f["xpcs/temporal_mean/scattering_2d"][...]
     npz_path = filename.parent / (filename.stem.replace("_results", "") + "_inferred_qphi_maps.npz")
     if not npz_path.is_file():
-        npz_path = Path("/Users/emilioescauriza/Desktop/Twotime_PostExpt_01/A073_inferred_qphi_maps.npz")
+        npz_path = _REPO_ROOT / "data" / "A073" / "Twotime_PostExpt_01" / "A073_inferred_qphi_maps.npz"
     d = np.load(npz_path, allow_pickle=False)
     valid = d.get("valid_mask", None)
     centre = get_brightest_region_centre(
@@ -2029,7 +2030,7 @@ def exec_bragg_peak_skewnorm(
         scattering_2d = f["xpcs/temporal_mean/scattering_2d"][...]
     npz_path = filename.parent / (filename.stem.replace("_results", "") + "_inferred_qphi_maps.npz")
     if not npz_path.is_file():
-        npz_path = Path("/Users/emilioescauriza/Desktop/Twotime_PostExpt_01/A073_inferred_qphi_maps.npz")
+        npz_path = _REPO_ROOT / "data" / "A073" / "Twotime_PostExpt_01" / "A073_inferred_qphi_maps.npz"
     d = np.load(npz_path, allow_pickle=False)
     valid = d.get("valid_mask", None)
     centre = get_brightest_region_centre(
@@ -2086,7 +2087,7 @@ def exec_bragg_peak_shape_metrics_fixed_q_phi(
     """Run Bragg peak shape metrics; pass options to override defaults."""
     with h5py.File(filename, "r") as f:
         scattering_2d = f["xpcs/temporal_mean/scattering_2d"][...]
-    npz_path = Path("/Users/emilioescauriza/Desktop/Twotime_PostExpt_01/A073_inferred_qphi_maps.npz")
+    npz_path = _REPO_ROOT / "data" / "A073" / "Twotime_PostExpt_01" / "A073_inferred_qphi_maps.npz"
     d = np.load(npz_path, allow_pickle=False)
     metrics = bragg_peak_shape_metrics_fixed_q_phi_from_maps(
         scattering_2d,
@@ -2117,13 +2118,14 @@ def exec_bragg_peak_shape_metrics_fixed_q_phi(
 
 
 def exec_make_and_save_inferred_qphi_maps():
-    results = Path("/Users/emilioescauriza/Desktop/Twotime_PostExpt_01/A073_IPA_NBH_1_att0100_260K_001_results.hdf")
-    out = Path("/Users/emilioescauriza/Desktop/Twotime_PostExpt_01/A073_inferred_qphi_maps.npz")
+    _a073_twotime = _REPO_ROOT / "data" / "A073" / "Twotime_PostExpt_01"
+    results = _a073_twotime / "A073_IPA_NBH_1_att0100_260K_001_results.hdf"
+    out = _a073_twotime / "A073_inferred_qphi_maps.npz"
     save_inferred_qphi_maps_npz(results, out)
 
 
 def exec_quick_check_inferred_qphi_npz():
-    npz_path = Path("/Users/emilioescauriza/Desktop/Twotime_PostExpt_01/A073_inferred_qphi_maps.npz")
+    npz_path = _REPO_ROOT / "data" / "A073" / "Twotime_PostExpt_01" / "A073_inferred_qphi_maps.npz"
     d = np.load(npz_path, allow_pickle=False)
     q_map = d["q_map"]
     phi_map = d["phi_map"]

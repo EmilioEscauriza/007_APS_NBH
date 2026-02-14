@@ -7,10 +7,16 @@ __pycache__/
 # OS
 .DS_Store
 
+# IDE
+.idea/
+
 # Secrets & credentials
 token.json
 client_secret_*.json
-config/workflow_config.py
+workflow/workflow_config.py
+
+# Agent conversation log (2 MB, not needed in repo)
+config/agent_context_from_006.txt
 
 # Generated figures (regenerate via workflow)
 figures/*

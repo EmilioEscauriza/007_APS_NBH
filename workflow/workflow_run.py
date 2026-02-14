@@ -1,7 +1,7 @@
 # ============================================================
 # Single entry point for workflow execution.
 # Config: workflow_config.py
-# Library: aps_workflow_lib.py (merged raw_data_inspection + analysis + google_sheet_upload)
+# Library: workflow_lib.py (merged raw_data_inspection + analysis + google_sheet_upload + correlation_analysis)
 # ============================================================
 
 import sys
@@ -13,7 +13,7 @@ if str(_script_dir) not in sys.path:
     sys.path.insert(0, str(_script_dir))
 
 import workflow_config  # noqa: F401  # load config so lib sees it
-import aps_workflow_lib as lib
+import workflow_lib as lib
 
 if __name__ == "__main__":
     # ---- raw_data_inspection ----
@@ -25,7 +25,7 @@ if __name__ == "__main__":
     # lib.compare_existing_ttc_and_ttc_from_raw()
     # lib.ttc_with_custom_mask()
     # lib.mask_roi_viewer_mp4_save()
-    lib.waterfall_roi_entrypoint()
+    # lib.waterfall_roi_entrypoint()
 
     # ---- analysis (APS 08-IDE) ----
     # lib.h5_file_inspector(lib.h5_file)
@@ -51,5 +51,17 @@ if __name__ == "__main__":
     # lib.exec_single_mask_plot_save()
     # lib.exec_q_dependent_ttc_plot()
     # lib.t_dep_xrd_argmax()
+
+    # ---- correlation_analysis ----
+    # lib.corr_cosine_fitting_test()
+    lib.corr_plot_of_lineout_directions()
+    # lib.corr_plot_of_period_vs_diagonal_start()
+    # lib.corr_plot_of_single_fft_antidiagonal_lineout()
+    # lib.corr_plot_of_period_vs_diagonal_start_both_lineouts()
+    # lib.corr_fft_2d_plot()
+    # lib.corr_fft_2d_fitting_and_parameter_extraction()
+    # lib.corr_plot_A4_17scan_central_brightest_ttcs()
+    # lib.corr_exec_plot_3x5_brightest_plus_offsets_ttcs()
+    # lib.demo_with_random()
 
     pass
