@@ -14,6 +14,7 @@ With translation and rotation motors, finding grains is trivial. The binding con
 - Circular beam profile with diameter $D_\text{beam}$
 - Surface reflection Bragg geometry (beam hits sample at angle $\theta_B$ from surface)
 - Each grain has mosaic spread $\eta$ (angular distribution of crystallographic blocks)
+- Optional: linear absorption coefficient $\mu$ for absorption-weighted effective count $N_\text{eff}$
 
 ## Derivation
 
@@ -87,23 +88,66 @@ Using $\cos(\theta_B) / \sin(\theta_B) = \cot(\theta_B)$:
 
 $$N_\text{Bragg} = \frac{\phi A_\text{beam} t \, m_{hkl} \cot(\theta_B) \Delta\omega}{2 v_\text{grain}}$$
 
+### 5. Absorption-Weighted Effective Number (Reflection Geometry)
+
+The geometric count above assumes every grain in the volume contributes equally. For **reflection** (symmetric Bragg), two refinements are used:
+
+**Depth distribution**  
+Grains are uniformly distributed in depth $z \in [0, t]$. The average depth is $t/2$; the effective path length for a “typical” grain is $t/(2\sin\theta_B)$ rather than the full $t/\sin\theta_B$ if we were to weight by depth.
+
+**Two-pass attenuation**  
+A grain at depth $z$ is illuminated on the way in and the diffracted ray exits along a similar path. The intensity weight (incident × exit) is:
+
+$$w(z) = \exp\!\left(-\mu \frac{z}{\sin\theta_B} - \mu \frac{z}{\sin\theta_B}\right) = \exp\!\left(-\frac{2\mu z}{\sin\theta_B}\right)$$
+
+Define the decay constant (in depth units, e.g. µm⁻¹ if $z$ is in µm):
+
+$$k = \frac{2\mu}{\sin\theta_B}$$
+
+(with $\mu$ in cm⁻¹ and $z$ in the same length units as $t$; convert as needed so $k\,z$ is dimensionless). Then $w(z) = e^{-kz}$.
+
+**Grains per unit depth** (along the surface normal):
+
+$$n_z = \frac{\phi A_\text{beam}}{v_\text{grain}} \cdot \frac{1}{\sin\theta_B} \cdot P_\text{Bragg}$$
+
+**Effective number of contributing grains** (absorption-weighted, participation-ratio style):
+
+$$N_\text{eff}(t) = n_z \cdot \frac{2}{k} \cdot \tanh\!\left(\frac{k t}{2}\right)$$
+
+- For $\mu \to 0$: $\tanh(kt/2) \approx kt/2$, so $N_\text{eff} \to n_z t = N_\text{Bragg}$ (geometric limit).
+- For strong absorption: $N_\text{eff}$ saturates at $n_z \cdot (2/k)$, i.e. an attenuation-length-limited depth.
+
+Speckle contrast uses this effective count:
+
+$$\beta = \frac{1}{\max(N_\text{eff}, 1)}$$
+
+**Maximum thicknesses** are found by solving $N_\text{eff}(t) = N_\text{max}$ or $N_\text{eff}(t) = 1$:
+
+$$t = \frac{2}{k} \,\operatorname{arctanh}\!\left(\frac{N_\text{eff}\, k}{2 n_z}\right)$$
+
+For low absorption, $t_\text{max,contrast} \approx 1/n_z + O(\mu^2)$, so the contrast thickness is almost independent of $\mu$ to first order.
+
 ## Result
 
-**Expected number of simultaneously diffracting grains:**
+**Geometric count** (all grains in volume count equally):
 
-$$N_\text{Bragg} = \frac{\phi A_\text{beam} L}{v_\text{grain}} \times \frac{m_{hkl} \cos(\theta_B) \Delta\omega}{2}$$
+$$N_\text{Bragg} = \frac{\phi A_\text{beam} L}{v_\text{grain}} \times P_\text{Bragg}$$
 
-where $L = t / \sin(\theta_B)$ is the path length through the film.
+with $L = t / \sin(\theta_B)$ and $P_\text{Bragg} = m_{hkl} \cos(\theta_B) \Delta\omega / 2$.
 
-**Maximum film thickness** (for $N_\text{Bragg} = N_\text{max}$):
+**Absorption-weighted effective count** (used for $\beta$ and $t_\text{max}$):
 
-$$t_\text{max,Nmax} = \frac{N_\text{max} v_\text{grain} \sin(\theta_B)}{\phi A_\text{beam} P_\text{Bragg}}$$
+$$N_\text{eff}(t) = n_z \cdot \frac{2}{k} \cdot \tanh\!\left(\frac{k t}{2}\right), \qquad k = \frac{2\mu}{\sin\theta_B}, \qquad n_z = \frac{\phi A_\text{beam}}{v_\text{grain} \sin\theta_B} \, P_\text{Bragg}$$
 
-where $P_\text{Bragg} = m_{hkl} \cos(\theta_B) \Delta\omega / 2$.
+**Maximum film thickness** (for $N_\text{eff} = N_\text{max}$):
 
-**Contrast threshold** (for $N_\text{Bragg} = 1$, perfect single-grain contrast):
+$$t_\text{max,Nmax} = \frac{2}{k} \,\operatorname{arctanh}\!\left(\frac{N_\text{max}\, k}{2 n_z}\right)$$
 
-$$t_\text{max,contrast} = \frac{v_\text{grain} \sin(\theta_B)}{\phi A_\text{beam} P_\text{Bragg}}$$
+(with geometric limit when $\mu \to 0$: $t_\text{max,Nmax} = N_\text{max} \cdot v_\text{grain} \sin\theta_B / (\phi A_\text{beam} P_\text{Bragg})$).
+
+**Contrast threshold** (for $N_\text{eff} = 1$):
+
+$$t_\text{max,contrast} = \frac{2}{k} \,\operatorname{arctanh}\!\left(\frac{k}{2 n_z}\right) \approx \frac{1}{n_z} \quad \text{(low } \mu \text{)}$$
 
 ## Key Dependencies
 
@@ -117,7 +161,8 @@ $$t_\text{max,contrast} = \frac{v_\text{grain} \sin(\theta_B)}{\phi A_\text{beam
 - Assumes uniform grain size (real powders have distributions)
 - Mosaic spread $\eta$ is typically the dominant term in $\Delta\omega$
 - For very small Bragg angles, the footprint becomes very elongated
-- Absorption is negligible for light-element materials like Na₂B₁₀H₁₀ at hard X-ray energies
+- **Reflection geometry**: path length $L = t/\sin\theta_B$ and two-pass attenuation $w(z) = \exp(-2\mu z/\sin\theta_B)$ assume symmetric Bragg reflection (grazing incidence)
+- For light-element materials (e.g. Na₂B₁₀H₁₀) at hard X-ray energies, $\mu$ is small so $N_\text{eff} \approx N_\text{Bragg}$ and $t_\text{max,contrast}$ is approximately independent of $\mu$ (to first order)
 - With motors, there is no minimum thickness constraint (can scan to find grains)
 
 ## References
