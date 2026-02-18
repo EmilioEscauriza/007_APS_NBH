@@ -34,7 +34,7 @@
 
 7. **Discrete Fourier Transform**: Compute real FFT:
 
-   $$\tilde{I}_k(f) = \sum_{t=0}^{T-1} I_k'(t) w(t) e^{-2\pi i f t \Delta t}$$
+   $$\tilde{I}_{k}(f) = \sum_{t=0}^{T-1} I_{k}'(t) \, w(t) \, e^{-2\pi i \, f \, t \, \Delta t}$$
 
    where $\Delta t$ is the frame time (seconds) and frequencies are $f = 0, 1/(T\Delta t), 2/(T\Delta t), \ldots$.
 
