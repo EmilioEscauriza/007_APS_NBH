@@ -123,7 +123,7 @@ $$\beta = \frac{1}{\max(N_\text{eff}, 1)}$$
 
 **Maximum thicknesses** are found by solving $N_\text{eff}(t) = N_\text{max}$ or $N_\text{eff}(t) = 1$:
 
-$$t = \frac{2}{k} \,\operatorname{arctanh}\!\left(\frac{N_\text{eff}\, k}{2 n_z}\right)$$
+$$t = \frac{2}{k} \,\mathrm{arctanh}\!\left(\frac{N_\text{eff}\, k}{2 n_z}\right)$$
 
 For low absorption, $t_\text{max,contrast} \approx 1/n_z + O(\mu^2)$, so the contrast thickness is almost independent of $\mu$ to first order.
 
@@ -141,13 +141,13 @@ $$N_\text{eff}(t) = n_z \cdot \frac{2}{k} \cdot \tanh\!\left(\frac{k t}{2}\right
 
 **Maximum film thickness** (for $N_\text{eff} = N_\text{max}$):
 
-$$t_\text{max,Nmax} = \frac{2}{k} \,\operatorname{arctanh}\!\left(\frac{N_\text{max}\, k}{2 n_z}\right)$$
+$$t_\text{max,Nmax} = \frac{2}{k} \,\mathrm{arctanh}\!\left(\frac{N_\text{max}\, k}{2 n_z}\right)$$
 
 (with geometric limit when $\mu \to 0$: $t_\text{max,Nmax} = N_\text{max} \cdot v_\text{grain} \sin\theta_B / (\phi A_\text{beam} P_\text{Bragg})$).
 
 **Contrast threshold** (for $N_\text{eff} = 1$):
 
-$$t_\text{max,contrast} = \frac{2}{k} \,\operatorname{arctanh}\!\left(\frac{k}{2 n_z}\right) \approx \frac{1}{n_z} \quad \text{(low } \mu \text{)}$$
+$$t_\text{max,contrast} = \frac{2}{k} \,\mathrm{arctanh}\!\left(\frac{k}{2 n_z}\right) \approx \frac{1}{n_z} \quad \text{(low } \mu \text{)}$$
 
 ## Key Dependencies
 
