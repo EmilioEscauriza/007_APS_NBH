@@ -17,7 +17,7 @@ import workflow_lib as lib
 
 if __name__ == "__main__":
     # ---- raw_data_inspection ----
-    # lib.data_structure_viewer()
+    lib.data_structure_viewer()
     # lib.raw_mask_oscillation_inspector()
     # lib.comparison_of_corr_and_g_ttc_plot_methods()
     # lib.compare_existing_vs_corr_entrypoint()
@@ -54,7 +54,7 @@ if __name__ == "__main__":
 
     # ---- correlation_analysis ----
     # lib.corr_cosine_fitting_test()
-    lib.corr_plot_of_lineout_directions()
+    # lib.corr_plot_of_lineout_directions()
     # lib.corr_plot_of_period_vs_diagonal_start()
     # lib.corr_plot_of_single_fft_antidiagonal_lineout()
     # lib.corr_plot_of_period_vs_diagonal_start_both_lineouts()
