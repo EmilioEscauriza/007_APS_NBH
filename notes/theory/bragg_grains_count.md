@@ -19,7 +19,7 @@ With translation and rotation motors, finding grains is trivial. The binding con
 
 ### 1. Illuminated Volume
 
-For a beam incident at grazing angle $\theta_B$ (Bragg geometry), the path length through a film of thickness $t$ is:
+For a beam incident at Bragg angle $\theta_B$, the path length through a film of thickness $t$ is:
 
 $$L = \frac{t}{\sin(\theta_B)}$$
 
