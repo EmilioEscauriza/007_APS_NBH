@@ -12,7 +12,7 @@ With translation and rotation motors, finding grains is trivial. The binding con
 - Grains are spherical with diameter $d$
 - Packing fraction $\phi$ (volume fraction occupied by grains)
 - Circular beam profile with diameter $D_\text{beam}$
-- Grazing incidence Bragg geometry (beam hits sample at angle $\theta_B$ from surface)
+- Surface reflection Bragg geometry (beam hits sample at angle $\theta_B$ from surface)
 - Each grain has mosaic spread $\eta$ (angular distribution of crystallographic blocks)
 
 ## Derivation
