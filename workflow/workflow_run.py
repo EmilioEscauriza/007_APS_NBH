@@ -61,7 +61,7 @@ if __name__ == "__main__":
     # lib.corr_fft_2d_plot()
     # lib.corr_fft_2d_fitting_and_parameter_extraction()
     # lib.corr_plot_A4_17scan_central_brightest_ttcs()
-    lib.corr_exec_plot_3x5_brightest_plus_offsets_ttcs()
+    # lib.corr_exec_plot_3x5_brightest_plus_offsets_ttcs()
     # lib.demo_with_random()
     # lib.spatial_scaling_calculator(center_mask=150, relative_mask=150, xray_energy_keV=12.4)
     # lib.spatial_scale_demo_plot(xray_energy_keV=12.4)
