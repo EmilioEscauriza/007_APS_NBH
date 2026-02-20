@@ -7457,6 +7457,204 @@ def save_xpcs_npz(out_path: Path, data: XPCSData) -> Path:
     return out_path
 
 
+# ---- Spatial scaling calculator ----
+
+def spatial_scaling_calculator(
+    center_mask: int,
+    relative_mask: int,
+    xray_energy_keV: float,
+    *,
+    q_step: float = 0.004,
+    phi_step_rad: float = 0.01216,
+    stride: int = 30,
+    print_result: bool = True,
+) -> tuple[float, float]:
+    """
+    Calculate the min/max spatial scales (in nm) probed by a relative mask
+    compared to a central mask.
+
+    The calculation uses the small-angle approximation dq = (2π/λ) × Δθ for
+    the tangential component, and direct Δq for the radial component.
+
+    Parameters
+    ----------
+    center_mask : int
+        Central mask number (1-indexed label, 1-300)
+    relative_mask : int
+        Relative mask number (1-indexed label, 1-300)
+    xray_energy_keV : float
+        X-ray energy in keV
+    q_step : float
+        Q-bin spacing in Å⁻¹ (default 0.004)
+    phi_step_rad : float
+        Phi-bin spacing in radians (default 0.01216, i.e. ~0.697°)
+    stride : int
+        Number of phi bins per q row (default 30)
+    print_result : bool
+        If True, print the results to stdout
+
+    Returns
+    -------
+    tuple[float, float]
+        (d_min_nm, d_max_nm) - min and max spatial scales in nm
+    """
+    center_idx = center_mask - 1
+    rel_idx = relative_mask - 1
+
+    iq_center = center_idx // stride
+    iphi_center = center_idx % stride
+
+    iq_rel = rel_idx // stride
+    iphi_rel = rel_idx % stride
+
+    delta_iq = iq_rel - iq_center
+    delta_iphi = iphi_rel - iphi_center
+
+    delta_q_center = delta_iq * q_step
+    delta_phi_center = delta_iphi * phi_step_rad
+
+    q_half = q_step / 2
+    phi_half = phi_step_rad / 2
+
+    hc = 12.39842  # keV·Å
+    wavelength = hc / xray_energy_keV
+
+    dq_radial_min = max(0.0, abs(delta_q_center) - q_half)
+    dphi_min = max(0.0, abs(delta_phi_center) - phi_half)
+    dq_tan_min = (2 * np.pi / wavelength) * dphi_min
+    dq_min = np.sqrt(dq_radial_min**2 + dq_tan_min**2)
+
+    dq_radial_max = abs(delta_q_center) + q_half
+    dphi_max = abs(delta_phi_center) + phi_half
+    dq_tan_max = (2 * np.pi / wavelength) * dphi_max
+    dq_max = np.sqrt(dq_radial_max**2 + dq_tan_max**2)
+
+    if dq_min > 0:
+        d_max_nm = (2 * np.pi / dq_min) / 10
+    else:
+        d_max_nm = np.inf
+    d_min_nm = (2 * np.pi / dq_max) / 10
+
+    if print_result:
+        print(f"|Δq| range: {dq_min:.6f} to {dq_max:.6f} Å⁻¹")
+        print(f"Spatial scale range: {d_min_nm:.1f} nm to {d_max_nm:.1f} nm")
+        print(f"  Center mask: {center_mask} (iq={iq_center}, iphi={iphi_center})")
+        print(f"  Relative mask: {relative_mask} (iq={iq_rel}, iphi={iphi_rel})")
+        print(f"  Offset: Δiq={delta_iq}, Δiphi={delta_iphi}")
+
+    return d_min_nm, d_max_nm
+
+
+def spatial_scale_demo_plot(
+    xray_energy_keV: float = 12.4,
+    *,
+    q_step: float = 0.004,
+    phi_step_rad: float = 0.01216,
+    stride: int = 30,
+    d_max_cap_nm: float = 1000.0,
+) -> None:
+    """
+    Create a 5x5 grid visualization showing mask offsets and their spatial scales.
+
+    The central square represents the reference mask (M0). Surrounding squares
+    show relative mask offsets (e.g., M-1, M+29) with their corresponding
+    |Δq| ranges and spatial scale ranges.
+
+    Parameters
+    ----------
+    xray_energy_keV : float
+        X-ray energy in keV (default 12.4)
+    q_step : float
+        Q-bin spacing in Å⁻¹ (default 0.004)
+    phi_step_rad : float
+        Phi-bin spacing in radians (default 0.01216)
+    stride : int
+        Number of phi bins per q row (default 30)
+    d_max_cap_nm : float
+        Cap for maximum spatial scale in nm (default 1000 = 1 μm)
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as mpatches
+
+    fig, ax = plt.subplots(figsize=(9, 8))
+    ax.set_xlim(-0.5, 4.5)
+    ax.set_ylim(-0.5, 4.5)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    ax.set_title(f"Spatial Scale Grid (E = {xray_energy_keV} keV)", fontsize=14, fontweight="bold")
+
+    center_mask = 150
+    hc = 12.39842
+    wavelength = hc / xray_energy_keV
+    q_half = q_step / 2
+    phi_half = phi_step_rad / 2
+
+    for row in range(5):
+        for col in range(5):
+            x = col
+            y = 4 - row
+
+            iq_offset = col - 2
+            iphi_offset = -(row - 2)
+            mask_offset = iq_offset * stride + iphi_offset
+
+            rect = mpatches.FancyBboxPatch(
+                (x - 0.45, y - 0.45), 0.9, 0.9,
+                boxstyle="round,pad=0.02,rounding_size=0.05",
+                facecolor="white",
+                edgecolor="black",
+                linewidth=1.5,
+            )
+            ax.add_patch(rect)
+
+            if mask_offset == 0:
+                label = "M0"
+                dq_min = 0.0
+                dq_max = np.sqrt(q_half**2 + ((2 * np.pi / wavelength) * phi_half)**2)
+                d_min_nm = (2 * np.pi / dq_max) / 10
+                d_max_nm = d_max_cap_nm
+                q_text = f"|Δq|: 0 – {dq_max:.3f} Å⁻¹"
+                d_text = f"d: {d_min_nm:.1f} nm – 1 μm"
+            else:
+                if mask_offset > 0:
+                    label = f"M+{mask_offset}"
+                else:
+                    label = f"M{mask_offset}"
+
+                relative_mask = center_mask + mask_offset
+                delta_q_center = iq_offset * q_step
+                delta_phi_center = iphi_offset * phi_step_rad
+
+                dq_radial_min = max(0.0, abs(delta_q_center) - q_half)
+                dphi_min = max(0.0, abs(delta_phi_center) - phi_half)
+                dq_tan_min = (2 * np.pi / wavelength) * dphi_min
+                dq_min = np.sqrt(dq_radial_min**2 + dq_tan_min**2)
+
+                dq_radial_max = abs(delta_q_center) + q_half
+                dphi_max = abs(delta_phi_center) + phi_half
+                dq_tan_max = (2 * np.pi / wavelength) * dphi_max
+                dq_max = np.sqrt(dq_radial_max**2 + dq_tan_max**2)
+
+                d_min_nm = (2 * np.pi / dq_max) / 10
+                if dq_min > 0:
+                    d_max_nm = (2 * np.pi / dq_min) / 10
+                else:
+                    d_max_nm = d_max_cap_nm
+
+                q_text = f"|Δq|: {dq_min:.3f} – {dq_max:.3f} Å⁻¹"
+                d_text = f"d: {d_min_nm:.1f} – {d_max_nm:.1f} nm"
+
+            ax.text(x, y + 0.25, label, ha="center", va="center", fontsize=12, fontweight="bold")
+            ax.text(x, y, q_text, ha="center", va="center", fontsize=8)
+            ax.text(x, y - 0.22, d_text, ha="center", va="center", fontsize=8)
+
+    ax.text(2, -0.8, "← lower q       higher q →", ha="center", va="center", fontsize=10)
+    ax.text(-0.8, 2, "← lower φ       higher φ →", ha="center", va="center", fontsize=10, rotation=90)
+
+    plt.tight_layout()
+    plt.show()
+
+
 # ---- TTC preprocessing + utilities ----
 
 def despike_patch_with_local_median(C: np.ndarray, center: tuple[int, int], halfwidth: int = 1) -> np.ndarray:
@@ -9027,8 +9225,8 @@ def plot_3x5_brightest_plus_offsets_ttcs(
             ax.set_xticks([])
             ax.set_yticks([])
             ax.set_frame_on(False)
-            ax.text(0.02, 0.98, f"{sid} | M{mask_n:03d}", transform=ax.transAxes,
-                    ha="left", va="top", fontsize=label_fontsize, color="white",
+            ax.text(0.02, 0.98, f"{sid} | M{mask_n:03d}\nmin={np.nanmin(Cplot):.3g}\nmax={np.nanmax(Cplot):.3g}",
+                    transform=ax.transAxes,ha="left", va="top", fontsize=label_fontsize, color="white",
                     bbox=dict(boxstyle="round,pad=0.25", facecolor="black", alpha=0.6, edgecolor="none"))
             meta.append((sid, mask_n))
 

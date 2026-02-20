@@ -49,6 +49,9 @@ DEFAULT_CONSTANT_J_AND_XS = False
 DEFAULT_V_PERIODIC = True
 DEFAULT_V_PERIOD_S = 150.0
 DEFAULT_V_AMP_FRAC = 0.2  # amplitude as fraction of v_mean; keep < 1 so v stays positive
+# Time-dependent J(t) and x_s(t): time constants as fraction of t_max (forward-time saturation).
+DEFAULT_XS_TAU_FRAC = 0.9  # x_s(t): tau = 0.25*t_max
+DEFAULT_J_TAU_FRAC = 0.9  # J(t): tau = 0.6*t_max
 
 
 def time_axis_from_range(time_range: str | list, dt_s: float) -> np.ndarray:
@@ -248,12 +251,15 @@ def example_heterodyne_params(
     use_periodic_v: bool = False,
     v_period_s: float = 100.0,
     v_amp_frac: float = 0.3,
+    xs_tau_frac: float = 0.25,
+    j_tau_frac: float = 0.6,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
     Shear banding: v set from stripe_period_s. v(t) is either:
     - Tanh two-regime (default): v_early → v_late so stripe frequency changes with time.
     - Periodic: v(t) = v_mean * (1 + v_amp_frac*cos(2π t/v_period_s)), clipped to stay positive.
-    If constant_J_and_xs=True: J and x_s are constant. If False: J(t) and x_s(t) vary with t.
+    If constant_J_and_xs=True: J and x_s are constant. If False: J(t) and x_s(t) vary with t;
+    time constants are tau_xs = xs_tau_frac*t_max and tau_J = j_tau_frac*t_max (forward-time saturation).
     """
     v_mean = 2.0 * np.pi / (q * stripe_period_s)
     if use_periodic_v:
@@ -273,8 +279,8 @@ def example_heterodyne_params(
         return J, v, x_s
     # Time-dependent J(t) and x_s(t) in forward t (paper SI Section 3). Both increase with t over the window → ramp.
     J0 = 1.5
-    x_s = 0.25 + 0.45 * (1.0 - np.exp(-t / (0.25 * tmax)))
-    J = J0 * (1.0 - np.exp(-t / (0.6 * tmax)))
+    x_s = 0.25 + 0.45 * (1.0 - np.exp(-t / (xs_tau_frac * tmax)))
+    J = J0 * (1.0 - np.exp(-t / (j_tau_frac * tmax)))
     return J, v, x_s
 
 
@@ -418,6 +424,8 @@ def main() -> None:
             use_periodic_v=use_periodic_v,
             v_period_s=args.v_period,
             v_amp_frac=args.v_amp_frac,
+            xs_tau_frac=DEFAULT_XS_TAU_FRAC,
+            j_tau_frac=DEFAULT_J_TAU_FRAC,
         )
         c2_het = c2_heterodyne(t, J_het, v, x_s, q=0.054, phi_deg=0.0, beta=0.5)
         plot_ttc(t, c2_lam, ax=ax_lam, title="Laminar (homodyne) — Eq. 1", cmap="viridis")
@@ -453,6 +461,8 @@ def main() -> None:
             use_periodic_v=use_periodic_v,
             v_period_s=args.v_period,
             v_amp_frac=args.v_amp_frac,
+            xs_tau_frac=DEFAULT_XS_TAU_FRAC,
+            j_tau_frac=DEFAULT_J_TAU_FRAC,
         )
         c2_het = c2_heterodyne(
             t, J, v, x_s,

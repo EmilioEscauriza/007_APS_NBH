@@ -1,0 +1,13 @@
+---
+description: Project rules
+alwaysApply: true
+---
+
+# Modelling scripts and explanations
+
+When you edit a script in `modelling/`, the corresponding explanation in `notes/modelling_explanations/` must stay in sync.
+
+- **Check for an explanation:** Each script has a matching doc (same base name, e.g. `ttc_plots_transport_coefficient.py` → `notes/modelling_explanations/ttc_plots_transport_coefficient.md`). Update that doc so it accurately describes the current behavior, defaults, and options.
+- **If you add or change behavior:** Update the explanation in the same change (formulas, constants, CLI flags, and narrative must match the code).
+- **If you rename a script:** Rename the corresponding explanation to match (e.g. renaming `foo.py` to `bar.py` → rename `notes/modelling_explanations/foo.md` to `bar.md`).
+- **Consistency with the paper:** Time-dependent model parameters (J(t), x_s(t), v(t)) should be expressed in forward time t, consistent with He et al. 2024 PNAS SI.

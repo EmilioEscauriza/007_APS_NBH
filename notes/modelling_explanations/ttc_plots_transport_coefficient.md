@@ -2,7 +2,7 @@
 
 This note explains how the two-time correlation $c_2(t_1, t_2)$ is computed for the **heterodyne** (two-component) transport-coefficient model used in the plots. It is written so the reader does not need access to any code. We only describe the case where the **transport coefficient and fractions are time-dependent** (so there is a ramp in the plot) and where the **velocity is periodic in time**.
 
-References: He et al. 2024 PNAS, “Transport coefficient approach for characterizing nonequilibrium dynamics in soft matter” (Supporting Information Eq. S-95).
+References: He et al. 2024 PNAS, "Transport coefficient approach for characterizing nonequilibrium dynamics in soft matter" (Supporting Information Eq. S-95).
 
 ---
 
@@ -82,17 +82,17 @@ So the velocity oscillates in time; that makes the stripe frequency along antidi
 
 ### 4.2 Transport coefficient $J(t)$ and flowing fraction $x_s(t)$ — time-dependent (ramp)
 
-The paper (SI Eq. S-95 and Section 3) expresses all time-dependent quantities in **forward time** $t$ and allows $J(t)$, $x_s(t)$ to take various forms. For this synthetic plot we use the following **forward-time** forms so that $J$ and $x_s$ increase with $t$ over the window (ramp perpendicular to the diagonal):
+The paper (SI Eq. S-95 and Section 3) expresses all time-dependent quantities in **forward time** $t$ and allows $J(t)$, $x_s(t)$ to take various forms. For this synthetic plot we use **forward-time** forms so that $J$ and $x_s$ increase with $t$ over the window (ramp perpendicular to the diagonal). The time constants are given as fractions of $t_{\max}$ (the last time in the window), controlled in the script by `DEFAULT_XS_TAU_FRAC` and `DEFAULT_J_TAU_FRAC` (defaults 0.25 and 0.6).
 
 **Flowing fraction:**
 
-$$x_s(t) = 0.25 + 0.45\,\bigl(1 - e^{-t/(0.25\,t_{\max})}\bigr)$$
+$$\tau_{x_s} = 0.25\,t_{\max}, \qquad x_s(t) = 0.25 + 0.45\,\bigl(1 - e^{-t/\tau_{x_s}}\bigr)$$
 
-with $t_{\max}$ the last time in the window; the static fraction is $x_r(t) = 1 - x_s(t)$.
+The static fraction is $x_r(t) = 1 - x_s(t)$.
 
 **Transport coefficient:**
 
-$$J(t) = J_0\,\bigl(1 - e^{-t/(0.6\,t_{\max})}\bigr), \quad J_0 = 1.5$$
+$$\tau_J = 0.6\,t_{\max}, \qquad J(t) = J_0\,\bigl(1 - e^{-t/\tau_J}\bigr), \quad J_0 = 1.5$$
 
 Because both $J(t)$ and $x_s(t)$ increase with $t$, the prefactor and the bracket in the $c_2$ formula depend on $(t_1, t_2)$, which produces the **ramp** (systematic brightness change perpendicular to the diagonal).
 
