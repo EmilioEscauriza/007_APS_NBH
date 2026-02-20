@@ -271,11 +271,10 @@ def example_heterodyne_params(
         J = np.full_like(t, 0.5)
         x_s = np.full_like(t, 0.5)
         return J, v, x_s
-    # Time-dependent J and x_s → ramp; use (tmax - t) so ramp direction is reversed
-    s = tmax - t
+    # Time-dependent J(t) and x_s(t) in forward t (paper SI Section 3). Both increase with t over the window → ramp.
     J0 = 1.5
-    x_s = 0.25 + 0.45 * (1.0 - np.exp(-s / (0.25 * tmax)))
-    J = J0 * np.exp(-s / (0.6 * tmax))
+    x_s = 0.25 + 0.45 * (1.0 - np.exp(-t / (0.25 * tmax)))
+    J = J0 * (1.0 - np.exp(-t / (0.6 * tmax)))
     return J, v, x_s
 
 

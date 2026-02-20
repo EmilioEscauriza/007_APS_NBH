@@ -82,23 +82,19 @@ So the velocity oscillates in time; that makes the stripe frequency along antidi
 
 ### 4.2 Transport coefficient $J(t)$ and flowing fraction $x_s(t)$ — time-dependent (ramp)
 
-We define an auxiliary time variable running backward:
-
-$$s = t_{\max} - t$$
-
-where $t_{\max}$ is the last time in the window. Then:
+The paper (SI Eq. S-95 and Section 3) expresses all time-dependent quantities in **forward time** $t$ and allows $J(t)$, $x_s(t)$ to take various forms. For this synthetic plot we use the following **forward-time** forms so that $J$ and $x_s$ increase with $t$ over the window (ramp perpendicular to the diagonal):
 
 **Flowing fraction:**
 
-$$x_s(t) = 0.25 + 0.45\,\bigl(1 - e^{-s/(0.25\,t_{\max})}\bigr)$$
+$$x_s(t) = 0.25 + 0.45\,\bigl(1 - e^{-t/(0.25\,t_{\max})}\bigr)$$
 
-So $x_s$ varies smoothly with “reversed” time $s$; the static fraction is $x_r(t) = 1 - x_s(t)$.
+with $t_{\max}$ the last time in the window; the static fraction is $x_r(t) = 1 - x_s(t)$.
 
 **Transport coefficient:**
 
-$$J(t) = J_0\,\exp\bigl(-s/(0.6\,t_{\max})\bigr), \quad J_0 = 1.5$$
+$$J(t) = J_0\,\bigl(1 - e^{-t/(0.6\,t_{\max})}\bigr), \quad J_0 = 1.5$$
 
-So $J$ also depends on $s$ and thus on $t$. Because both $J(t)$ and $x_s(t)$ vary with $t$, the prefactor and the bracket in the $c_2$ formula depend on where we are in the $(t_1, t_2)$ plane, which produces the **ramp** (systematic brightness change perpendicular to the diagonal). Using $s = t_{\max} - t$ reverses the direction of that ramp compared to using $t$ directly.
+Because both $J(t)$ and $x_s(t)$ increase with $t$, the prefactor and the bracket in the $c_2$ formula depend on $(t_1, t_2)$, which produces the **ramp** (systematic brightness change perpendicular to the diagonal).
 
 ---
 
@@ -113,4 +109,4 @@ The formula above is evaluated on the full $(t_1, t_2)$ grid. For display, the h
 - **Grid:** $N$ time points; $c_2$ is computed on an $N\times N$ $(t_1, t_2)$ grid.
 - **Integrals:** Cumulative trapezoidal $F(t)$, then $\int_{t_1}^{t_2} y\,ds = F(t_2)-F(t_1)$ (with $\mathcal{J}$ taken as the integral over the delay interval so the diagonal is the maximum).
 - **Heterodyne formula:** $c_2 = 1 + (\beta/f^2)\,\exp(-q^2\mathcal{J})\,\times$ bracket, with bracket containing $x_r,x_s$ at $t_1,t_2$ and $\cos(q\cos\phi\;\mathcal{V})$.
-- **This plot:** $v(t)$ is periodic; $J(t)$ and $x_s(t)$ are time-dependent via $s = t_{\max}-t$, giving stripes plus a ramp. The plot is then symmetrized about $t_1 = t_2$.
+- **This plot:** $v(t)$ is periodic; $J(t)$ and $x_s(t)$ are time-dependent (as above, in forward $t$), giving stripes plus a ramp. The plot is then symmetrized about $t_1 = t_2$.
