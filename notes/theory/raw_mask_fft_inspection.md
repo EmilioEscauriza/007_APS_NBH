@@ -34,11 +34,11 @@
 
 7. **Discrete Fourier Transform**: Compute real FFT:
 
-   $$\hat{I}_{k}(f) = \sum_{t=0}^{T-1} I_{k}^{\prime}(t) \, w(t) \, e^{-2\pi \mathrm{i} f t \Delta t}$$
+   $$\hat{I}\_{k}(f) = \sum\_{t=0}^{T-1} I\_{k}^{\prime}(t) \, w(t) \, e^{-2\pi \mathrm{i} f t \Delta t}$$
 
    where $\Delta t$ is the frame time (seconds) and frequencies are $f = 0, 1/(T\Delta t), 2/(T\Delta t), \ldots$.
 
-8. **Power spectrum**: Define as $P_k(f) = |\hat{I}_k(f)|^2$ with DC component ($f=0$) explicitly ignored. Plot in log scale.
+8. **Power spectrum**: Define as $P_k(f) = |\hat{I}\_k(f)|^2$ with DC component ($f=0$) explicitly ignored. Plot in log scale.
 
 9. **Peak frequency selection**: Within a physically motivated band, identify the dominant oscillatory component $f_\text{peak}$.
 

@@ -17,7 +17,7 @@ import workflow_lib as lib
 
 if __name__ == "__main__":
     # ---- raw_data_inspection ----
-    lib.data_structure_viewer()
+    # lib.data_structure_viewer()
     # lib.raw_mask_oscillation_inspector()
     # lib.comparison_of_corr_and_g_ttc_plot_methods()
     # lib.compare_existing_vs_corr_entrypoint()
@@ -48,7 +48,7 @@ if __name__ == "__main__":
 
     # ---- google_sheet_upload ----
     # lib.exec_google_sheet_upload()
-    # lib.exec_single_mask_plot_save()
+    lib.exec_single_mask_plot_save()
     # lib.exec_q_dependent_ttc_plot()
     # lib.t_dep_xrd_argmax()
 

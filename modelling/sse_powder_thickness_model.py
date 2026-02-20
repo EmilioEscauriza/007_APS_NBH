@@ -15,17 +15,17 @@ Physics:
     N_Bragg = (φ · A_beam · L / v_grain) · (m_hkl · cos(θ_B) · Δω / 2)
     t_max   = thickness at which N_Bragg = N_max
 
-Grain count uses an absorption-weighted effective number N_eff:
-    - Grains uniformly distributed in depth 0..t → average depth t/2.
-    - Symmetric Bragg reflection: incident + exit path → intensity weight
-      w(z) = exp(-2µz/sin(θ_B)) per grain at depth z.
-    - N_eff(t) = n_z · (2/k) · tanh(kt/2), with k = 2µ/sin(θ_B) [µm⁻¹].
-    - For µ→0 this recovers the geometric count; for strong absorption
-      N_eff saturates at an attenuation-length-limited value.
+Grain count is geometric only (no absorption weighting): N_Bragg ∝ t.
+Absorption is handled separately by the transmission curve T(t).
 
 where Δω is the effective rocking-curve width (mosaic ⊕ Darwin ⊕ beam
 divergence), and v_grain = (4/3)π(d/2)³.  The beam footprint on the
 sample surface is an ellipse with short axis D and long axis D/sin(θ_B).
+
+Transmission (first-principles):
+    T = exp(-2 φ µ L),  L = t/sin(θ_B) [cm],  φ = packing fraction.
+    µ ≈ 1 cm⁻¹ for NBH(50:50)B10:B12 at 12.4 keV (mass attenuation from
+    Na,B,H and ρ ≈ 1 g/cm³); double-pass gives T_single² per path.
 """
 
 import numpy as np
@@ -64,8 +64,8 @@ class BraggXPCSParams:
     beam_divergence_urad: float = 32.0      # beam divergence [µrad] (1µm pinhole, 12.4keV)
     darwin_width_urad: float = 5.0          # intrinsic Darwin width [µrad] (perfect crystal)
 
-    # --- Absorption (optional) ---
-    mu_cm_inv: float = 0.023                # linear absorption coeff [cm⁻¹] (Na₂B₁₀H₁₀ @ 12.4keV)
+    # --- Absorption (first-principles, no slider) ---
+    mu_cm_inv: float = 1.2                  # linear attenuation [cm⁻¹] NBH(50:50)B10:B12 @ 12.4 keV, ρ≈1 g/cm³
 
     # --- XPCS criterion ---
     N_max: float = 10.0                     # max acceptable diffracting grains
@@ -149,61 +149,23 @@ def n_bragg_vs_thickness(params: BraggXPCSParams,
     return N_total * P_bragg
 
 
-def _absorption_decay_constant_per_um(params: BraggXPCSParams) -> float:
-    """
-    Decay constant k [µm⁻¹] for depth weighting w(z) = exp(-k·z).
-
-    Symmetric Bragg: incident + exit path gives 2µ·(z/sin(θ_B)) in cm,
-    so k_um = 2·µ_cm⁻¹·(1e-4)/sin(θ_B).
-    """
-    return 2.0 * params.mu_cm_inv * 1e-4 / np.sin(params.theta_B_rad)
-
-
-def _grains_per_um_depth(params: BraggXPCSParams) -> float:
-    """Grains per µm depth (along surface normal): n_z = (φ A/v)·(1/sin θ)·P_Bragg."""
-    P_bragg = (params.multiplicity * np.cos(params.theta_B_rad)
-               * params.delta_omega_rad / 2.0)
-    return (params.packing_fraction * params.beam_area_um2
-            / params.grain_volume_um3) * (1.0 / np.sin(params.theta_B_rad)) * P_bragg
-
-
-def n_bragg_effective_vs_thickness(params: BraggXPCSParams,
-                                    t_um: np.ndarray) -> np.ndarray:
-    """
-    Absorption-weighted effective number of diffracting grains N_eff(t).
-
-    Assumes grains uniformly distributed in depth 0..t and symmetric
-    Bragg reflection (incident + exit path). Intensity weight per grain
-    at depth z: w(z) = exp(-k·z) with k = 2µ/sin(θ_B) [µm⁻¹]. Then
-
-        N_eff(t) = n_z · (2/k) · tanh(k·t/2).
-
-    For µ→0 this reduces to the geometric count n_z·t; for strong
-    absorption N_eff saturates. Used for speckle contrast and t_max.
-
-    Parameters
-    ----------
-    params : BraggXPCSParams
-    t_um   : array of thicknesses [µm]
-
-    Returns
-    -------
-    N_eff : array, same shape as t_um
-    """
-    k_um = _absorption_decay_constant_per_um(params)
-    n_z = _grains_per_um_depth(params)
-    # N_eff = n_z * (2/k) * tanh(k*t/2); avoid div by zero when µ=0
-    if k_um <= 0:
-        return n_bragg_vs_thickness(params, t_um)
-    factor = 2.0 / k_um
-    return n_z * factor * np.tanh(k_um * t_um / 2.0)
-
-
 def absorption_transmission(params: BraggXPCSParams,
                             t_um: np.ndarray) -> np.ndarray:
     """
     Two-pass transmission: intensity after incident + reflected path through
     full thickness. T = exp(-2µ L), with L = t/sin(θ_B) in cm.
+    (No packing fraction; use transmission() for powder.)
+    """
+    path_cm = (t_um / np.sin(params.theta_B_rad)) * 1e-4
+    return np.exp(-2.0 * params.mu_cm_inv * path_cm)
+
+
+def transmission(params: BraggXPCSParams,
+                 t_um: np.ndarray) -> np.ndarray:
+    """
+    Transmission T (1 = maximum) in reflection geometry: double-pass through
+    thickness with packing fraction. Effective path through material is
+    φ · L with L = t/sin(θ_B), so T = exp(-2 φ µ L) in cm.
 
     Parameters
     ----------
@@ -212,83 +174,58 @@ def absorption_transmission(params: BraggXPCSParams,
 
     Returns
     -------
-    T : array, same shape as t_um
+    T : array, same shape as t_um, in [0, 1]
     """
     path_cm = (t_um / np.sin(params.theta_B_rad)) * 1e-4
-    return np.exp(-2.0 * params.mu_cm_inv * path_cm)
+    return np.exp(-2.0 * params.packing_fraction * params.mu_cm_inv * path_cm)
 
 
-def speckle_contrast(params: BraggXPCSParams,
-                     t_um: np.ndarray) -> np.ndarray:
-    """
-    Speckle contrast  β = 1 / max(N_eff, 1).
-
-    Uses absorption-weighted N_eff (depth-averaged, two-pass attenuation).
-    For a single effectively contributing grain β = 1; contrast drops as 1/N.
-    """
-    N = n_bragg_effective_vs_thickness(params, t_um)
-    return 1.0 / np.maximum(N, 1.0)
+def _n_slots_ring(params: BraggXPCSParams) -> float:
+    """Number of independent azimuthal slots on the Debye-Scherrer ring (360° / spot size)."""
+    return 360.0 / params.spot_size_deg
 
 
 def overlap_probability(params: BraggXPCSParams,
                         t_um: np.ndarray) -> np.ndarray:
     """
     Birthday-problem probability that at least two Bragg spots overlap
-    on the Debye-Scherrer ring. Uses N_eff.
+    on the Debye-Scherrer ring. Uses geometric N_Bragg.
 
     M = 360 / spot_size_deg  independent azimuthal slots.
     P(overlap) ≈ 1 - exp(-N(N-1) / (2M))
     """
-    M = 360.0 / params.spot_size_deg
-    N = n_bragg_effective_vs_thickness(params, t_um)
+    M = _n_slots_ring(params)
+    N = n_bragg_vs_thickness(params, t_um)
     return 1.0 - np.exp(-N * (N - 1.0) / (2.0 * M))
 
 
 def max_thickness_Nmax(params: BraggXPCSParams) -> float:
     """
-    Maximum film thickness [µm] such that N_eff ≤ N_max.
+    Maximum film thickness [µm] such that N_Bragg ≤ N_max.
 
-    Solves N_eff(t) = n_z·(2/k)·tanh(kt/2) = N_max for t.
-    With motors, finding grains is trivial; constraint is the upper limit.
+    Geometric only: t_max = N_max · sin(θ_B) / (grains_per_µm_path · P_Bragg).
     """
     params._recompute()
-    k_um = _absorption_decay_constant_per_um(params)
-    n_z = _grains_per_um_depth(params)
-    if k_um <= 0:
-        sin_theta = np.sin(params.theta_B_rad)
-        P_bragg = (params.multiplicity * np.cos(params.theta_B_rad)
-                   * params.delta_omega_rad / 2.0)
-        grains_per_um_path = (params.packing_fraction * params.beam_area_um2
-                              / params.grain_volume_um3)
-        return params.N_max * sin_theta / (grains_per_um_path * P_bragg)
-    rhs = params.N_max * k_um / (2.0 * n_z)
-    if rhs >= 1.0:
-        return np.inf
-    rhs = min(rhs, 1.0 - 1e-10)
-    return (2.0 / k_um) * np.arctanh(rhs)
+    sin_theta = np.sin(params.theta_B_rad)
+    P_bragg = (params.multiplicity * np.cos(params.theta_B_rad)
+               * params.delta_omega_rad / 2.0)
+    grains_per_um_path = (params.packing_fraction * params.beam_area_um2
+                          / params.grain_volume_um3)
+    return params.N_max * sin_theta / (grains_per_um_path * P_bragg)
 
 
 def max_thickness_contrast(params: BraggXPCSParams) -> float:
     """
-    Film thickness [µm] where N_eff = 1 (β = 1, perfect contrast).
-
-    Solves N_eff(t) = 1 for t. Above this thickness, contrast drops.
+    Film thickness [µm] where N_Bragg = 1 (β = 1, perfect contrast).
+    Geometric only.
     """
     params._recompute()
-    k_um = _absorption_decay_constant_per_um(params)
-    n_z = _grains_per_um_depth(params)
-    if k_um <= 0:
-        sin_theta = np.sin(params.theta_B_rad)
-        P_bragg = (params.multiplicity * np.cos(params.theta_B_rad)
-                   * params.delta_omega_rad / 2.0)
-        grains_per_um_path = (params.packing_fraction * params.beam_area_um2
-                              / params.grain_volume_um3)
-        return sin_theta / (grains_per_um_path * P_bragg)
-    rhs = 1.0 * k_um / (2.0 * n_z)
-    if rhs >= 1.0:
-        return np.inf
-    rhs = min(rhs, 1.0 - 1e-10)
-    return (2.0 / k_um) * np.arctanh(rhs)
+    sin_theta = np.sin(params.theta_B_rad)
+    P_bragg = (params.multiplicity * np.cos(params.theta_B_rad)
+               * params.delta_omega_rad / 2.0)
+    grains_per_um_path = (params.packing_fraction * params.beam_area_um2
+                          / params.grain_volume_um3)
+    return sin_theta / (grains_per_um_path * P_bragg)
 
 
 # ---------------------------------------------------------------------------
@@ -345,8 +282,8 @@ def interactive_plot(params: BraggXPCSParams | None = None):
     Launch an interactive matplotlib figure with sliders for all key
     parameters.  Three panels:
 
-        1. N_Bragg(t)   with shaded feasible window
-        2. Speckle contrast β(t) = 1/N_Bragg
+        1. N_Bragg(t) with shaded feasible window (N_Bragg ≤ N_max)
+        2. Transmission T(t) = exp(-2φµL), double-pass, L = t/sin(θ_B)
         3. Debye-Scherrer ring with spots (polar plot)
     """
     if params is None:
@@ -373,39 +310,41 @@ def interactive_plot(params: BraggXPCSParams | None = None):
         params._recompute()
         t_max_Nmax = max_thickness_Nmax(params)
         t_max_contrast = max_thickness_contrast(params)
-        # Plot range: small t to 10% beyond t_max_Nmax (no fixed 100 µm floor)
+        # Plot range: small t to 10% beyond t_max_Nmax; cap when inf (N_eff saturates)
         t_max_plot = t_max_Nmax * 1.1
-        t = np.linspace(0.1, t_max_plot, 2000)
+        if not np.isfinite(t_max_plot) or t_max_plot <= 0.1:
+            t_max_plot = 5000.0
+        t_max_plot = min(t_max_plot, 50000.0)
+        t = np.linspace(0.1, float(t_max_plot), 2000)
         
-        N_eff = n_bragg_effective_vs_thickness(params, t)
-        N_geom = n_bragg_vs_thickness(params, t)
-        beta = speckle_contrast(params, t)
+        N_bragg = n_bragg_vs_thickness(params, t)
+        T = transmission(params, t)
 
-        # Panel 1: N_eff vs thickness (with geometric N as reference)
+        # Panel 1: N_Bragg vs thickness (geometric, no absorption)
         ax1.cla()
-        ax1.semilogy(t, N_eff, "C0", lw=2, label="$N_{\\rm eff}$ (absorption-weighted)")
-        ax1.semilogy(t, N_geom, "C0", lw=0.8, ls="--", alpha=0.6, label="$N_{\\rm Bragg}$ (geometric)")
+        ax1.semilogy(t, N_bragg, "C0", lw=2, label="$N_{\\rm Bragg}$")
         ax1.axhline(params.N_max, color="C2", ls="--", lw=0.8,
                      label=f"$N_{{max}}$ = {params.N_max:.0f}")
         if t[0] <= t_max_Nmax <= t[-1]:
             ax1.axvline(t_max_Nmax, color="C2", lw=1.5, ls="-",
                          label=f"$t_{{max,Nmax}}$ = {t_max_Nmax:.1f} µm")
         ax1.axvspan(0, min(t_max_Nmax, t[-1]), alpha=0.08, color="C2")
-        ax1.set_ylabel("$N_{\\rm eff}$, $N_{\\rm Bragg}$")
-        ax1.set_title("Effective number of diffracting grains (N_eff: depth + two-pass absorption)")
+        ax1.set_ylabel("$N_{\\rm Bragg}$")
+        ax1.set_title("Number of diffracting grains (geometric)")
         ax1.legend(loc="lower center", fontsize=8)
         ax1.set_ylim(1e-2, None)
 
-        # Panel 2: Speckle contrast vs thickness
+        # Panel 2: Transmission vs thickness (double-pass, packing fraction)
         ax2.cla()
-        ax2.plot(t, beta, "C1", lw=2)
-        if t[0] <= t_max_contrast <= t[-1]:
-            ax2.axvline(t_max_contrast, color="C4", lw=1.5, ls="-",
-                         label=f"$t_{{max,contrast}}$ = {t_max_contrast:.1f} µm")
-        ax2.axvspan(0, min(t_max_contrast, t[-1]), alpha=0.08, color="C4")
-        ax2.set_ylabel("Speckle contrast  $\\beta$")
+        ax2.plot(t, T, "C1", lw=2)
+        if t[0] <= t_max_Nmax <= t[-1]:
+            T_at_tmax = float(transmission(params, np.array([t_max_Nmax]))[0])
+            ax2.axvline(t_max_Nmax, color="C2", lw=1.5, ls="-",
+                         label=f"$t_{{max,Nmax}}$ = {t_max_Nmax:.1f} µm, T = {T_at_tmax:.3f}")
+        ax2.axvspan(0, min(t_max_Nmax, t[-1]), alpha=0.08, color="C2")
+        ax2.set_ylabel("Transmission  $T$")
         ax2.set_xlabel("Film thickness $t$  [µm]")
-        ax2.set_title("Speckle contrast  $\\beta = 1 / N_{\\rm eff}$")
+        ax2.set_title("Transmission  $T = e^{-2\\phi\\mu L}$,  $L = t/\\sin\\theta_B$  (double-pass)")
         ax2.set_ylim(-0.05, 1.05)
         ax2.legend(loc="upper right", fontsize=8)
 
@@ -449,12 +388,11 @@ def interactive_plot(params: BraggXPCSParams | None = None):
         "Δω = √(η² + δ_div² + δ_Dar²)\n"
         "A = π(D_beam/2)²\n"
         "L = t / sin(θ_B)        [path length]\n"
-        "k = 2µ/sin(θ_B) [µm⁻¹] [two-pass]\n"
-        "n_z = (φ·A/v)·(1/sin θ)·P_Bragg\n"
-        "N_eff = n_z·(2/k)·tanh(kt/2)\n"
-        "β = 1 / max(N_eff, 1)\n"
+        "N_Bragg = φ·A·L/v · P_Bragg\n"
+        "L [cm] for T: same\n"
+        "T = exp(-2 φ µ L)  [double-pass]\n"
         "Δφ_spot ≈ √(Δω² + (p·n/L·tan(2θ))²)\n"
-        "t_max : N_eff = N_max or 1"
+        "t_max : N_Bragg = N_max or 1"
     )
     fig.text(
         0.655, 0.97, eq_lines,
@@ -463,6 +401,9 @@ def interactive_plot(params: BraggXPCSParams | None = None):
     )
 
     # Dynamic derived-values annotation (below equations)
+    t_max_str = f"{t_max_Nmax:.1f} µm ({t_max_Nmax*1e-3:.3f} mm)"
+    T_at_tmax = float(transmission(params, np.array([min(t_max_Nmax, 5000.0)]))[0])
+    T_str = f"{T_at_tmax:.4f}"
     bragg_text = fig.text(
         0.65, 0.67,
         f"θ_B = {params.theta_B_deg:.3f}°    "
@@ -471,8 +412,8 @@ def interactive_plot(params: BraggXPCSParams | None = None):
         f"Δω = {np.degrees(params.delta_omega_rad):.5f}°\n"
         f"Footprint = {params.footprint_long_um:.2f} µm\n"
         f"Δφ_spot = {params.spot_size_deg:.2f}°\n\n"
-        f">>> t_max_Nmax = {t_max_Nmax:.1f} µm ({t_max_Nmax*1e-3:.3f} mm)\n"
-        f">>> t_max_contrast = {t_max_contrast:.1f} µm ({t_max_contrast*1e-3:.3f} mm)",
+        f">>> t_max_Nmax = {t_max_str}\n"
+        f">>> T(t_max_Nmax) = {T_str}",
         fontsize=9, verticalalignment="top", family="monospace",
         bbox=dict(boxstyle="round,pad=0.4", fc="wheat", alpha=0.5),
     )
@@ -488,7 +429,6 @@ def interactive_plot(params: BraggXPCSParams | None = None):
         ("Multiplicity",        1,     48,    params.multiplicity),
         ("Divergence [µrad]",   1.0,   50.0,  params.beam_divergence_urad),
         ("Darwin [µrad]",       1.0,   10.0,  params.darwin_width_urad),
-        ("µ [cm⁻¹]",            0.001,  0.05,  params.mu_cm_inv),
         ("N_max",               1.0,   50.0,  params.N_max),
         ("Detector dist [m]",   0.1,    4.0,  params.detector_distance_m),
     ]
@@ -510,8 +450,8 @@ def interactive_plot(params: BraggXPCSParams | None = None):
          params.packing_fraction, params.mosaic_spread_deg,
          params.d_spacing_A, params.multiplicity,
          params.beam_divergence_urad, params.darwin_width_urad,
-         params.mu_cm_inv, params.N_max,
-         params.detector_distance_m) = vals[:12]
+         params.N_max,
+         params.detector_distance_m) = vals[:11]
         params.multiplicity = int(params.multiplicity)
 
         try:
@@ -519,6 +459,9 @@ def interactive_plot(params: BraggXPCSParams | None = None):
         except ValueError:
             return
 
+        t_max_str = f"{t_max_Nmax:.1f} µm ({t_max_Nmax*1e-3:.3f} mm)"
+        T_at_tmax = float(transmission(params, np.array([min(t_max_Nmax, 5000.0)]))[0])
+        T_str = f"{T_at_tmax:.4f}"
         bragg_text.set_text(
             f"θ_B = {params.theta_B_deg:.3f}°    "
             f"2θ = {2 * params.theta_B_deg:.3f}°\n"
@@ -526,8 +469,8 @@ def interactive_plot(params: BraggXPCSParams | None = None):
             f"Δω = {np.degrees(params.delta_omega_rad):.5f}°\n"
             f"Footprint = {params.footprint_long_um:.2f} µm\n"
             f"Δφ_spot = {params.spot_size_deg:.2f}°\n\n"
-            f">>> t_max_Nmax = {t_max_Nmax:.1f} µm ({t_max_Nmax*1e-3:.3f} mm)\n"
-            f">>> t_max_contrast = {t_max_contrast:.1f} µm ({t_max_contrast*1e-3:.3f} mm)"
+            f">>> t_max_Nmax = {t_max_str}\n"
+            f">>> T(t_max_Nmax) = {T_str}"
         )
         
         ring_title.set_text(
@@ -558,7 +501,7 @@ if __name__ == "__main__":
         multiplicity=4,
         beam_divergence_urad=25.0,
         darwin_width_urad=5.0,
-        mu_cm_inv=0.023,
+        mu_cm_inv=1.0,
         N_max=2.0,
         detector_distance_m=2.0,
     )
