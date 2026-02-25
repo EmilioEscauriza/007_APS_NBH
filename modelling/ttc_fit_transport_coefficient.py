@@ -114,6 +114,7 @@ def estimate_v_from_stripes(
 
 # ---------------------------------------------------------------------------
 #  Parametrization: vector of params -> J, gammadot or J, v, x_s on grid t
+#  Heterodyne forms match ttc_plots_transport_coefficient.py (forward-time).
 # ---------------------------------------------------------------------------
 def params_to_laminar(t: np.ndarray, p: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """p = [J0, tau_J, alpha_J, g0, tau_g, beta]. Returns (J, gammadot)."""
@@ -126,14 +127,27 @@ def params_to_laminar(t: np.ndarray, p: np.ndarray) -> tuple[np.ndarray, np.ndar
 
 
 def params_to_heterodyne(t: np.ndarray, p: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """p = [J0, tau_J, v0, x_s0, x_s1, tau_x, beta]. Returns (J, v, x_s)."""
-    J0, tau_J, v0, x_s0, x_s1, tau_x, beta = p
-    tau_J = max(tau_J, 1e-6)
-    tau_x = max(tau_x, 1e-6)
-    J = J0 * np.exp(-t / tau_J)
-    v = np.full_like(t, max(v0, 0.0))
-    x_s = x_s0 + (x_s1 - x_s0) * (1.0 - np.exp(-t / tau_x))
+    """
+    Same functional forms as ttc_plots_transport_coefficient.example_heterodyne_params
+    (forward time t): J(t) = J0*(1 - exp(-t/tau_J)), x_s(t) = 0.25 + 0.45*(1 - exp(-t/tau_xs)),
+    v(t) = v_mean*(1 + v_amp_frac*cos(2π t/v_period_s)), clipped to stay positive.
+    p = [J0, j_tau_frac, v_mean, v_amp_frac, v_period_s, xs_tau_frac, beta]. Returns (J, v, x_s).
+    """
+    J0, j_tau_frac, v_mean, v_amp_frac, v_period_s, xs_tau_frac, beta = p
+    t_max = float(t[-1]) if len(t) > 0 else 1.0
+    j_tau_frac = max(j_tau_frac, 1e-4)
+    xs_tau_frac = max(xs_tau_frac, 1e-4)
+    v_period_s = max(v_period_s, 1e-3)
+    v_mean = max(v_mean, 0.0)
+    v_amp_frac = np.clip(v_amp_frac, 0.0, 0.99)
+
+    tau_J = j_tau_frac * t_max
+    tau_xs = xs_tau_frac * t_max
+    J = J0 * (1.0 - np.exp(-t / tau_J))
+    x_s = 0.25 + 0.45 * (1.0 - np.exp(-t / tau_xs))
     x_s = np.clip(x_s, 0.0, 1.0)
+    v = v_mean * (1.0 + v_amp_frac * np.cos(2.0 * np.pi * t / v_period_s))
+    v = np.maximum(v, 1e-6 * v_mean)
     return J, v, x_s
 
 
@@ -281,15 +295,16 @@ def fit_heterodyne(
         C_mod = c2_heterodyne(t, J, v, x_s, q=q, phi_deg=phi_deg, beta=beta)
         return p_best, C_mod
 
-    # Full 7-param fit
-    p0 = np.array([1.0, t_max / 2.0, v_guess, 0.3, 0.6, t_max / 4.0, 0.5])
+    # Full 7-param fit: [J0, j_tau_frac, v_mean, v_amp_frac, v_period_s, xs_tau_frac, beta]
+    # Same forms as ttc_plots_transport_coefficient (forward-time J, x_s; periodic v).
+    p0 = np.array([1.5, 0.6, v_guess, 0.2, 150.0, 0.25, 0.5])
     bounds = [
         (1e-4, 20.0),
-        (1e-3, 1e4),
+        (0.01, 2.0),   # j_tau_frac (fraction of t_max)
         (v_min, 50.0),
-        (0.0, 1.0),
-        (0.0, 1.0),
-        (1e-3, 1e4),
+        (0.0, 0.99),   # v_amp_frac
+        (1.0, 1e4),    # v_period_s [s]
+        (0.01, 2.0),   # xs_tau_frac
         (0.01, 1.0),
     ]
     res = minimize(
@@ -378,7 +393,7 @@ if __name__ == "__main__":
             print("Heterodyne (flat) fit params: J0=%.4f v0=%.4f x_s=%.4f beta=%.4f" % tuple(p_best))
         else:
             print(
-                "Heterodyne fit params: J0=%.4f tau_J=%.2f v0=%.4f x_s0=%.4f x_s1=%.4f tau_x=%.2f beta=%.4f"
+                "Heterodyne fit params: J0=%.4f j_tau_frac=%.4f v_mean=%.4f v_amp_frac=%.4f v_period_s=%.2f xs_tau_frac=%.4f beta=%.4f"
                 % tuple(p_best)
             )
     else:

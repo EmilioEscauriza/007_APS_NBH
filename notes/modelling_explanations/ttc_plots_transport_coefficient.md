@@ -18,13 +18,13 @@ Many steps below need the integral of a time-dependent quantity $y(s)$ between t
 
 - First, build the **cumulative** integral from the start of the run up to each time $t_k$:
 
-  $$F(t_k) = \int_{t_0}^{t_k} y(s)\,ds$$
+  $$F(t_k) = \int_{t_0}^{t_k} y(s)\ \mathrm{d}s$$
 
   using the trapezoidal rule on the discrete $t$ array.
 
 - Then, for any $(t_1, t_2)$, the integral from $t_1$ to $t_2$ is
 
-  $$\int_{t_1}^{t_2} y(s)\,ds = F(t_2) - F(t_1)$$
+  $$\int_{t_1}^{t_2} y(s)\ \mathrm{d}s = F(t_2) - F(t_1)$$
 
   with $F$ evaluated by linear interpolation when $t_1$ or $t_2$ fall between grid points.
 
@@ -48,13 +48,13 @@ Notation:
   $$f^2 = (x_{s1}^2 + x_{r1}^2)(x_{s2}^2 + x_{r2}^2)$$
 - **Delay-based decay (so the diagonal is brightest):**
 
-  $$\mathcal{J}(t_1,t_2) = \int_{\min(t_1,t_2)}^{\max(t_1,t_2)} J(s)\,ds$$
+  $$\mathcal{J}(t_1,t_2) = \int_{\min(t_1,t_2)}^{\max(t_1,t_2)} J(s)\ \mathrm{d}s$$
 
   So we use the integral of $J$ over the **delay** $\tau = |t_2 - t_1|$, not the signed interval. That makes the decay symmetric: on the diagonal $t_1 = t_2$ the integral is zero and the exponential is 1; moving away from the diagonal it increases and the exponential decreases.
 
 - **Phase of the stripes:**
 
-  $$\mathcal{V}(t_1,t_2) = \int_{t_1}^{t_2} v(s)\,ds$$
+  $$\mathcal{V}(t_1,t_2) = \int_{t_1}^{t_2} v(s)\ \mathrm{d}s$$
 
   This is the **signed** integral of the velocity from $t_1$ to $t_2$. It sets the phase of the $\cos$ term and thus the stripe pattern.
 
@@ -107,6 +107,6 @@ The formula above is evaluated on the full $(t_1, t_2)$ grid. For display, the h
 ## Summary
 
 - **Grid:** $N$ time points; $c_2$ is computed on an $N\times N$ $(t_1, t_2)$ grid.
-- **Integrals:** Cumulative trapezoidal $F(t)$, then $\int_{t_1}^{t_2} y\,ds = F(t_2)-F(t_1)$ (with $\mathcal{J}$ taken as the integral over the delay interval so the diagonal is the maximum).
+- **Integrals:** Cumulative trapezoidal $F(t)$, then $\int_{t_1}^{t_2} y\ \mathrm{d}s = F(t_2)-F(t_1)$ (with $\mathcal{J}$ taken as the integral over the delay interval so the diagonal is the maximum).
 - **Heterodyne formula:** $c_2 = 1 + (\beta/f^2)\,\exp(-q^2\mathcal{J})\,\times$ bracket, with bracket containing $x_r,x_s$ at $t_1,t_2$ and $\cos(q\cos\phi\;\mathcal{V})$.
 - **This plot:** $v(t)$ is periodic; $J(t)$ and $x_s(t)$ are time-dependent (as above, in forward $t$), giving stripes plus a ramp. The plot is then symmetrized about $t_1 = t_2$.

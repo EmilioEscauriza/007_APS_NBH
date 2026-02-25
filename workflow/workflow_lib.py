@@ -29,6 +29,7 @@ from matplotlib.ticker import FormatStrFormatter
 import cv2
 from scipy.special import erfinv
 from scipy.fft import fft, ifft, fftfreq
+from scipy.optimize import curve_fit
 
 import gspread
 import httplib2
@@ -6937,10 +6938,14 @@ def plot_single_mask_scan(
     highlight_boost: float = 25.0,
     highlight_outline: bool = True,
     outline_rgba=(1.0, 1.0, 1.0, 1.0),
+    ttc_cbar_size: str | float = "6%",
 ):
     """
     One combined figure for a single scan + single mask:
       [overview with neighborhood borders (selected mask highlighted) | g2 for mask_n | TTC for mask_n]
+
+    ttc_cbar_size : str or float
+        Width of the TTC colorbar, e.g. "4%" or "8%" (string) or 0.06 (fraction of axes width). Default "4%".
 
     Saves to:
       out_dir/individual_scan_plots/position_<POS>/<SAMPLE_ID>/<SAMPLE_ID>_mask_<mask>_ctxNxN.png
@@ -7087,15 +7092,26 @@ def plot_single_mask_scan(
     ax2 = fig.add_subplot(gs[2])
     C = symmetrize_ttc(C)
     Cplot = clip_ttc(C, p_hi=99.9)
+    cmin, cmax = np.nanmin(Cplot), np.nanmax(Cplot)
+    if cmax > cmin and np.isfinite(cmin) and np.isfinite(cmax):
+        Cplot = (Cplot - cmin) / (cmax - cmin)
+    else:
+        Cplot = np.full_like(Cplot, 0.5)
 
-    im2 = ax2.imshow(Cplot, origin="lower", cmap="plasma", interpolation="nearest")
+    im2 = ax2.imshow(Cplot, origin="lower", cmap="plasma", interpolation="nearest", vmin=0, vmax=1)
     ax2.set_title(f"TTC for M{mask_n}")
     ax2.set_xlabel("t₁")
     ax2.set_ylabel("t₂")
 
     div2 = make_axes_locatable(ax2)
-    cax2 = div2.append_axes("right", size="4%", pad=0.05)
+    cax2 = div2.append_axes("right", size=ttc_cbar_size, pad=0.8)
     fig.colorbar(im2, cax=cax2)
+    cax2.yaxis.set_ticks_position("left")
+    cax2.yaxis.set_tick_params(labelleft=True, labelright=False)
+    line_width = 1.5
+    for spine in cax2.spines.values():
+        spine.set_linewidth(line_width)
+    cax2.tick_params(axis="y", width=line_width, length=4, labelsize=30)
 
     ax2.text(
         0.05, 0.95,
@@ -7259,6 +7275,287 @@ def exec_single_mask_plot_save():
         grid_n=5,
         border_width=1,
         dpi=250,
+    )
+
+
+def mask_mesh_around_bright_peak(
+    *,
+    sample_id: str | None = None,
+    base_dir: Path | None = None,
+    half_crop: int = 150,
+    border_width: float = 1.0,
+    dpi: int = 150,
+    out_path: Path | str | None = None,
+) -> Path | None:
+    """
+    Plot a 300×300-pixel crop around the brightest part of the scattering image,
+    with all mask boundaries outlined (no neighborhood filter).
+
+    Similar to the first subfigure of exec_single_mask_plot_save(), but:
+      - Crop is centered on the brightest mask (same logic).
+      - All masks in the crop are outlined (not just a 5×5 neighborhood).
+
+    Parameters
+    ----------
+    sample_id : str | None
+        Sample/scan ID used to find the results HDF. Defaults to SAMPLE_ID.
+    base_dir : Path | None
+        Base directory to search for <sample_id>_*_results.hdf. Defaults to RESULTS_BASE_DIR.
+    half_crop : int
+        Half-width of the square crop in pixels (default 150 → 300×300).
+    border_width : float
+        Line width for mask boundaries (default 1.0).
+    dpi : int
+        Figure DPI for saved image (default 150).
+    out_path : Path | str | None
+        If set, save the figure to this path; otherwise show interactively.
+
+    Returns
+    -------
+    Path | None
+        out_path if the figure was saved, else None.
+    """
+    if sample_id is None:
+        sample_id = SAMPLE_ID
+    if base_dir is None:
+        base_dir = RESULTS_BASE_DIR
+
+    hdf_path = find_results_hdf_optional(base_dir, sample_id)
+    if hdf_path is None:
+        raise FileNotFoundError(f"No results HDF found for {sample_id} in {base_dir}")
+
+    common = load_common_data(hdf_path)
+    center_mask, _ = find_brightest_mask_by_integrated_intensity(common.roi_map, common.scat2d)
+
+    I = common.scat2d.astype(float, copy=False).copy()
+    roi_map = common.roi_map
+
+    ys, xs = np.where(roi_map == center_mask)
+    if ys.size == 0 or xs.size == 0:
+        cy, cx = I.shape[0] // 2, I.shape[1] // 2
+    else:
+        cy = int(np.round(ys.mean()))
+        cx = int(np.round(xs.mean()))
+
+    ymin = max(cy - half_crop, 0)
+    ymax = min(cy + half_crop, I.shape[0])
+    xmin = max(cx - half_crop, 0)
+    xmax = min(cx + half_crop, I.shape[1])
+
+    Icrop = I[ymin:ymax, xmin:xmax]
+    Mcrop = roi_map[ymin:ymax, xmin:xmax]
+
+    cmap = plt.cm.plasma.copy()
+    cmap.set_under("black")
+    cmap.set_bad("black")
+
+    Ishow = np.ma.masked_less_equal(Icrop, 0.0)
+    vmax = float(Ishow.max()) if Ishow.count() else 1.0
+
+    fig, ax = plt.subplots(figsize=(8, 8))
+    im = ax.imshow(
+        Ishow,
+        origin="upper",
+        cmap=cmap,
+        norm=LogNorm(vmin=0.1, vmax=vmax),
+        interpolation="nearest",
+    )
+    ax.set_facecolor("black")
+
+    in_crop = (Mcrop > 0)
+    boundary = np.zeros_like(Mcrop, dtype=bool)
+    boundary[1:, :] |= (Mcrop[1:, :] != Mcrop[:-1, :]) & (in_crop[1:, :] | in_crop[:-1, :])
+    boundary[:, 1:] |= (Mcrop[:, 1:] != Mcrop[:, :-1]) & (in_crop[:, 1:] | in_crop[:, :-1])
+
+    if border_width and border_width > 1:
+        N = int(round(border_width)) - 1
+        b = boundary.copy()
+        for _ in range(N):
+            b2 = b.copy()
+            b2[1:, :] |= b[:-1, :]
+            b2[:-1, :] |= b[1:, :]
+            b2[:, 1:] |= b[:, :-1]
+            b2[:, :-1] |= b[:, 1:]
+            b = b2
+        boundary = b
+
+    overlay = np.zeros((boundary.shape[0], boundary.shape[1], 4), dtype=float)
+    overlay[boundary] = (0.0, 0.0, 0.0, 1.0)
+    ax.imshow(overlay, origin="upper", interpolation="nearest")
+
+    ax.set_title(f"{sample_id} mask mesh (M{center_mask} center, {2*half_crop}×{2*half_crop} px)")
+    ax.axis("off")
+
+    div = make_axes_locatable(ax)
+    cax = div.append_axes("right", size="4%", pad=0.05)
+    fig.colorbar(im, cax=cax)
+
+    plt.tight_layout()
+
+    if out_path is not None:
+        out_path = Path(out_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+        return out_path
+
+    plt.show()
+    return None
+
+
+def exec_mask_mesh_around_bright_peak(
+    *,
+    half_crop: int = 250,
+    border_width: float = 1.0,
+    dpi: int = 150,
+    out_path: Path | str | None = None,
+) -> Path | None:
+    """
+    Entrypoint: run mask_mesh_around_bright_peak with SAMPLE_ID and RESULTS_BASE_DIR.
+    Options (half_crop, border_width, dpi, out_path) can be overridden.
+    """
+    return mask_mesh_around_bright_peak(
+        sample_id=SAMPLE_ID,
+        base_dir=RESULTS_BASE_DIR,
+        half_crop=half_crop,
+        border_width=border_width,
+        dpi=dpi,
+        out_path=out_path,
+    )
+
+
+def _g2_stretched_model(tau: np.ndarray, g2_inf: float, beta: float, tau0: float, gamma: float) -> np.ndarray:
+    """g2(τ) = g2_inf + β exp(-2(τ/τ0)^γ). g2_inf = baseline (~1.2); stretched if γ < 1, compressed if γ > 1."""
+    return g2_inf + beta * np.exp(-2.0 * (tau / tau0) ** gamma)
+
+
+def g2_fitting_plot(
+    *,
+    sample_id: str | None = None,
+    base_dir: Path | None = None,
+    mask_n: int | None = None,
+    out_path: Path | str | None = None,
+    dpi: int = 150,
+) -> Path | None:
+    """
+    Load g2 for a mask (same source as exec_single_mask_plot_save middle subfigure)
+    and plot g2(τ) vs τ (log x).
+
+    Parameters
+    ----------
+    sample_id : str | None
+        Sample/scan ID. Defaults to SAMPLE_ID.
+    base_dir : Path | None
+        Base directory for results HDF. Defaults to RESULTS_BASE_DIR.
+    mask_n : int | None
+        Mask number (1-indexed). Defaults to MASK_N.
+    out_path : Path | str | None
+        If set, save figure; otherwise show.
+    dpi : int
+        DPI when saving (default 150).
+
+    Returns
+    -------
+    Path | None
+        out_path if saved, else None.
+    """
+    if sample_id is None:
+        sample_id = SAMPLE_ID
+    if base_dir is None:
+        base_dir = RESULTS_BASE_DIR
+    if mask_n is None:
+        mask_n = MASK_N
+
+    hdf_path = find_results_hdf_optional(base_dir, sample_id)
+    if hdf_path is None:
+        raise FileNotFoundError(f"No results HDF found for {sample_id} in {base_dir}")
+
+    common = load_common_data(hdf_path)
+    stride_eff = int(common.stride)
+
+    tau = np.arange(common.g2.shape[0])
+    j = mask_n - 1
+
+    fig, ax = plt.subplots(figsize=(6, 4))
+    y_max = None
+    if 0 <= j < common.g2.shape[1]:
+        y = common.g2[:, j]
+        tau = tau[1:-1]
+        y = y[1:-1]
+        ax.semilogx(tau, y, lw=2, label="g2", color="C0")
+        y_max = float(np.nanmax(y))
+        # Stretched/compressed exponential fit: g2(τ) = g2_inf + β exp(-2(τ/τ0)^γ)
+        mask_fit = np.isfinite(tau) & np.isfinite(y) & (tau > 0)
+        if np.sum(mask_fit) >= 5:
+            tau_f = tau[mask_fit].astype(float)
+            y_f = y[mask_fit].astype(float)
+            g2_inf_init = 1.2  # baseline (long-τ) from data
+            beta_init = max(0.01, float(np.nanmax(y_f)) - g2_inf_init)
+            tau0_init = 130.0
+            p0 = (g2_inf_init, beta_init, tau0_init, 1.0)
+            lb = (1.0, 1e-6, 1.0, 0.2)
+            ub = (1.5, 1.0, float(np.max(tau_f)) * 1.5, 3.0)
+            try:
+                popt, _ = curve_fit(
+                    _g2_stretched_model,
+                    tau_f,
+                    y_f,
+                    p0=p0,
+                    bounds=(lb, ub),
+                    maxfev=5000,
+                )
+                tau_smooth = np.logspace(np.log10(max(1e-6, float(tau.min()))), np.log10(float(tau.max())), 200)
+                y_fit = _g2_stretched_model(tau_smooth, *popt)
+                ax.semilogx(tau_smooth, y_fit, "--", lw=1.5, label=f"fit g2∞={popt[0]:.2f}, β={popt[1]:.3f}, τ0={popt[2]:.1f}, γ={popt[3]:.3f}", color="C1")
+            except Exception:
+                pass
+        try:
+            q_m, phi_m, *_ = qphi_for_mask(mask_n, common.q_list, common.phi_list, stride=stride_eff)
+            ax.set_title(f"{sample_id}: g2 for M{mask_n}\nq={q_m:.3f} Å⁻¹, φ={phi_m:.3f}°")
+        except Exception:
+            ax.set_title(f"{sample_id}: g2 for M{mask_n}")
+    else:
+        ax.set_title(f"{sample_id}: g2 for M{mask_n} (out of range)")
+
+
+    ax.set_xlabel("Delay time τ (index)")
+    ax.set_ylabel("g2(τ)", labelpad=10)
+    ax.grid(True, alpha=0.3)
+    ax.legend(loc="upper right", fontsize=8)
+    plt.tight_layout()
+
+    if y_max is not None and np.isfinite(y_max):
+        ax.set_autoscaley_on(False)
+        ax.set_ylim(0, y_max * 1.10)
+        ax.margins(y=0)
+
+    if out_path is not None:
+        out_path = Path(out_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        fig.savefig(out_path, dpi=dpi, bbox_inches="tight")
+        plt.close(fig)
+        return out_path
+
+    plt.show()
+    return None
+
+
+def exec_g2_fitting(
+    *,
+    mask_n: int | None = None,
+    out_path: Path | str | None = None,
+    dpi: int = 150,
+) -> Path | None:
+    """
+    Entrypoint: plot g2 for config mask (SAMPLE_ID, RESULTS_BASE_DIR, MASK_N).
+    Override mask_n, out_path, or dpi as needed.
+    """
+    return g2_fitting_plot(
+        sample_id=SAMPLE_ID,
+        base_dir=RESULTS_BASE_DIR,
+        mask_n=mask_n if mask_n is not None else MASK_N,
+        out_path=out_path,
+        dpi=dpi,
     )
 
 
@@ -7613,8 +7910,8 @@ def spatial_scale_demo_plot(
                 dq_max = np.sqrt(q_half**2 + ((2 * np.pi / wavelength) * phi_half)**2)
                 d_min_nm = (2 * np.pi / dq_max) / 10
                 d_max_nm = d_max_cap_nm
-                q_text = f"|Δq|: 0 – {dq_max:.3f} Å⁻¹"
-                d_text = f"d: {d_min_nm:.1f} nm – 1 μm"
+                q_text = f"|Δq|: 0 – {dq_max:.3g} Å⁻¹"
+                d_text = f"d: {d_min_nm:.3g} nm – 1 μm"
             else:
                 if mask_offset > 0:
                     label = f"M+{mask_offset}"
@@ -7641,8 +7938,8 @@ def spatial_scale_demo_plot(
                 else:
                     d_max_nm = d_max_cap_nm
 
-                q_text = f"|Δq|: {dq_min:.3f} – {dq_max:.3f} Å⁻¹"
-                d_text = f"d: {d_min_nm:.1f} – {d_max_nm:.1f} nm"
+                q_text = f"|Δq|: {dq_min:.3g} – {dq_max:.3g} Å⁻¹"
+                d_text = f"d: {d_min_nm:.3g} – {d_max_nm:.3g} nm"
 
             ax.text(x, y + 0.25, label, ha="center", va="center", fontsize=12, fontweight="bold")
             ax.text(x, y, q_text, ha="center", va="center", fontsize=8)
@@ -9170,16 +9467,19 @@ def plot_3x5_brightest_plus_offsets_ttcs(
     save: bool = True,
     out_path: Path | None = None,
     dpi: int = 250,
-    label_fontsize: int = 12,
+    label_fontsize: int = 16,
+    dt_s: float = 0.5,
+    n_ticks: int = 5,
 ):
-    """3x5 TTC figure: row 0 = brightest mask, row 1 = brightest-1, row 2 = brightest-2."""
+    """3×N TTC figure: row 0 = brightest mask, row 1 = brightest-1, row 2 = brightest-2. N = 4 or 5."""
     if base_dir is None:
         base_dir = RESULTS_BASE_DIR
     base_dir = Path(base_dir)
 
     sample_ids = list(sample_ids)
-    if len(sample_ids) != 5:
-        raise ValueError("sample_ids must have length 5 for a 3x5 grid")
+    n_cols = len(sample_ids)
+    if n_cols not in (4, 5):
+        raise ValueError("sample_ids must have length 4 or 5 for a 3×N grid")
 
     def _brightest_mask_like_A4(hdf_path: Path) -> int:
         with h5py.File(hdf_path, "r") as f:
@@ -9204,7 +9504,7 @@ def plot_3x5_brightest_plus_offsets_ttcs(
         hdf_paths[sid] = hdf_path
         brightest_by_sid[sid] = _brightest_mask_like_A4(hdf_path)
 
-    fig, axes = plt.subplots(3, 5, figsize=figsize)
+    fig, axes = plt.subplots(3, n_cols, figsize=figsize)
     axes = np.asarray(axes)
     meta: list[tuple[str, int]] = []
 
@@ -9222,13 +9522,37 @@ def plot_3x5_brightest_plus_offsets_ttcs(
                 vmin, vmax = None, None
             ax.imshow(Cplot, origin="lower", cmap=cmap, interpolation="nearest",
                       aspect="equal", vmin=vmin, vmax=vmax)
-            ax.set_xticks([])
-            ax.set_yticks([])
+            n1, n2 = C.shape[1], C.shape[0]
+            tick_fontsize = max(8, label_fontsize - 2)
+            if r == 2:
+                # t1 ticks and labels for bottom row (time in minutes, 1 index = dt_s)
+                tick_idx = np.linspace(0, n1 - 1, min(n_ticks, n1), dtype=int)
+                tick_mins = tick_idx * dt_s / 60.0
+                ax.set_xticks(tick_idx)
+                ax.set_xticklabels([f"{t:.0f}" for t in tick_mins], fontsize=tick_fontsize)
+            else:
+                ax.set_xticks([])
+            if c == 0:
+                # t2 ticks and labels for left column (time in minutes, 1 index = dt_s)
+                tick_idx = np.linspace(0, n2 - 1, min(n_ticks, n2), dtype=int)
+                tick_mins = tick_idx * dt_s / 60.0
+                ax.set_yticks(tick_idx)
+                ax.set_yticklabels([f"{t:.0f}" for t in tick_mins], fontsize=tick_fontsize)
+            else:
+                ax.set_yticks([])
             ax.set_frame_on(False)
-            ax.text(0.02, 0.98, f"{sid} | M{mask_n:03d}\nmin={np.nanmin(Cplot):.3g}\nmax={np.nanmax(Cplot):.3g}",
-                    transform=ax.transAxes,ha="left", va="top", fontsize=label_fontsize, color="white",
-                    bbox=dict(boxstyle="round,pad=0.25", facecolor="black", alpha=0.6, edgecolor="none"))
+            # ax.text(0.02, 0.98, f"{sid} | M{mask_n:03d}\nmin={np.nanmin(Cplot):.3g}\nmax={np.nanmax(Cplot):.3g}",
+            #         transform=ax.transAxes,ha="left", va="top", fontsize=label_fontsize, color="white",
+            #         bbox=dict(boxstyle="round,pad=0.25", facecolor="black", alpha=0.6, edgecolor="none"))
+            # ax.text(0.04, 0.96, f"min={np.nanmin(Cplot):.3g}\nmax={np.nanmax(Cplot):.3g}",
+            #         transform=ax.transAxes, ha="left", va="top", fontsize=label_fontsize, color="white",
+            #         bbox=dict(boxstyle="round,pad=0.25", facecolor="black", alpha=0.6, edgecolor="none"))
             meta.append((sid, mask_n))
+
+    for c in range(n_cols):
+        axes[2, c].set_xlabel(r"$\mathit{t}_1$ (mins)", fontsize=label_fontsize)
+    for r in range(3):
+        axes[r, 0].set_ylabel(r"$\mathit{t}_2$ (mins)", fontsize=label_fontsize)
 
     plt.tight_layout(pad=0.5)
 
@@ -9322,7 +9646,16 @@ def corr_plot_A4_17scan_central_brightest_ttcs():
 def corr_exec_plot_3x5_brightest_plus_offsets_ttcs():
     return plot_3x5_brightest_plus_offsets_ttcs(
         base_dir=RESULTS_BASE_DIR,
-        sample_ids=["A029", "A048", "A073", "A088", "A101"],
+        sample_ids=["A036", "A048", "A073", "A088", "A101"],
         clip_hi_percentile=99.9, cmap="plasma", figsize=(12.0, 7.2),
         save=True, out_path=FIGURES_DIR / "misc" / "A4_3x5_brightest_plus012.png",
+    )
+
+
+def corr_exec_plot_3x4_brightest_plus_offsets_ttcs():
+    return plot_3x5_brightest_plus_offsets_ttcs(
+        base_dir=RESULTS_BASE_DIR,
+        sample_ids=["A048", "A073", "A088", "A101"],
+        clip_hi_percentile=99.9, cmap="plasma", figsize=(9.6, 7.2),
+        save=True, out_path=FIGURES_DIR / "misc" / "A4_3x4_brightest_plus012.png",
     )

@@ -22,8 +22,17 @@ Usage:
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 import numpy as np
 import matplotlib.pyplot as plt
+
+
+# ---------------------------------------------------------------------------
+#  Data (for side-by-side real vs model); same as ttc_fit_transport_coefficient.py
+# ---------------------------------------------------------------------------
+SAMPLE_ID = "A073"
+MASK_N = 145
+POSITION_NAME = "A4"
 
 
 # ---------------------------------------------------------------------------
@@ -36,35 +45,75 @@ DEFAULT_HETERODYNE = True
 DEFAULT_SAVE = False
 DEFAULT_NO_SHOW = False
 # e.g. [1000, 3000, 2] → indices 1000:3000:2 → 1000 points; or "full" → default 1000 points
-DEFAULT_TIME_RANGE = [1000, 3000, 2]
+DEFAULT_TIME_RANGE = [0, 4800, 1]
 DEFAULT_DT_S = 0.5
 # Heterodyne stripe frequency: period (s) of one oscillation along delay. Smaller = more lines.
 # v = 2π/(q*period); e.g. 175 s → ~0.67 Å/s, 100 s → ~1.2 Å/s.
-DEFAULT_STRIPE_PERIOD_S = 175.0
+DEFAULT_STRIPE_PERIOD_S = 350.0
 # If True, J(t) and x_s(t) are constant so there is no linear ramp (dim TL → bright BR) perpendicular
 # to t1=t2. v(t) still has two regimes so stripe frequency changes with time (non-flat).
 # If False, J(t) and x_s(t) vary with t → you get that ramp on top of the stripes.
 DEFAULT_CONSTANT_J_AND_XS = False
 # Periodic v(t): if True, v(t) = v_mean * (1 + amp*cos(2π t/T)) instead of tanh two-regime.
 DEFAULT_V_PERIODIC = True
-DEFAULT_V_PERIOD_S = 150.0
+DEFAULT_V_PERIOD_S = 300.0
 DEFAULT_V_AMP_FRAC = 0.2  # amplitude as fraction of v_mean; keep < 1 so v stays positive
+# Time-varying stripe period (when periodic v): T(t) = A + B*cos(π t/L + φ), L=2400 s; T(0)=205, T(1200)=415, T(2400)=255 s.
+STRIPE_PERIOD_COSINE_L_S = 2400.0
+STRIPE_PERIOD_COSINE_A = 230.0
+STRIPE_PERIOD_COSINE_B = np.sqrt(25**2 + 185**2)
+STRIPE_PERIOD_COSINE_PHI = np.arctan2(-185.0, -25.0)
 # Time-dependent J(t) and x_s(t): time constants as fraction of t_max (forward-time saturation).
-DEFAULT_XS_TAU_FRAC = 0.9  # x_s(t): tau = 0.25*t_max
-DEFAULT_J_TAU_FRAC = 0.9  # J(t): tau = 0.6*t_max
+DEFAULT_XS_TAU_FRAC = 1  # x_s(t): tau = 0.25*t_max
+DEFAULT_J_TAU_FRAC = 1  # J(t): tau = 0.6*t_max
+# Antidiagonal decay: exp(-q²∫J dt). Smaller J = gentler decay.
+DEFAULT_J_CONSTANT = 0.1   # J when constant_J_and_xs (Å²/s or same units)
+DEFAULT_J0 = 1.5           # J0 when J(t) time-dependent (saturation level)
 
 
 def time_axis_from_range(time_range: str | list, dt_s: float) -> np.ndarray:
     """
     Return 1D time array t [s] from TIME_RANGE and DT_S.
-    time_range: "full" → 1000 points; or [start, end, stride] → indices start:end:stride.
+    time_range: "full" → 1000 points, t = 0, dt_s, 2*dt_s, ...; or
+    [start, end, stride] → t[i] = (start + i*stride)*dt_s so axes show time in seconds
+    (e.g. 500–1500 s for [1000, 3000, 2], dt_s=0.5).
     """
     if time_range == "full":
         n = 1000
-    else:
-        start, end, stride = time_range[0], time_range[1], time_range[2]
-        n = len(range(start, end, stride))
-    return np.arange(n, dtype=float) * dt_s
+        return np.arange(n, dtype=float) * dt_s
+    start, end, stride = time_range[0], time_range[1], time_range[2]
+    n = len(range(start, end, stride))
+    indices = np.arange(n, dtype=float) * stride + start
+    return indices * dt_s
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parent.parent
+
+
+def _ttc_path(position: str, sample_id: str, mask_n: int) -> Path:
+    return (
+        _repo_root()
+        / "data"
+        / "ttc_arrays"
+        / position
+        / sample_id
+        / f"{position}_{sample_id}_mask{mask_n:03d}_ttc_array.npy"
+    )
+
+
+def load_ttc(path: Path, *, symmetrize: bool = True) -> np.ndarray:
+    C = np.load(path).astype(np.float64)
+    if symmetrize:
+        C = C + C.T - np.diag(np.diag(C))
+    return C
+
+
+def apply_time_range(C: np.ndarray, time_range: str | list) -> np.ndarray:
+    if time_range == "full":
+        return C
+    start, end, stride = time_range[0], time_range[1], time_range[2]
+    return C[start:end:stride, start:end:stride].copy()
 
 
 # ---------------------------------------------------------------------------
@@ -253,18 +302,27 @@ def example_heterodyne_params(
     v_amp_frac: float = 0.3,
     xs_tau_frac: float = 0.25,
     j_tau_frac: float = 0.6,
+    J_constant: float = 0.5,
+    J0: float = 1.5,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """
-    Shear banding: v set from stripe_period_s. v(t) is either:
+    Shear banding: v set from stripe_period_s or time-varying T(t). v(t) is either:
     - Tanh two-regime (default): v_early → v_late so stripe frequency changes with time.
-    - Periodic: v(t) = v_mean * (1 + v_amp_frac*cos(2π t/v_period_s)), clipped to stay positive.
+    - Periodic: T(t) = A + B*cos(π t/L + φ) over L=2400 s (205→415→255 s), then v(t) = 2π/(q*T(t)),
+      with extra amplitude modulation v *= (1 + v_amp_frac*cos(2π t/v_period_s)).
     If constant_J_and_xs=True: J and x_s are constant. If False: J(t) and x_s(t) vary with t;
     time constants are tau_xs = xs_tau_frac*t_max and tau_J = j_tau_frac*t_max (forward-time saturation).
+    Antidiagonal decay is exp(-q²∫J dt); lower J_constant or J0 = gentler decay.
     """
     v_mean = 2.0 * np.pi / (q * stripe_period_s)
     if use_periodic_v:
-        # v(t) periodic in time; keep v > 0
-        v = v_mean * (1.0 + v_amp_frac * np.cos(2.0 * np.pi * t / v_period_s))
+        # Time-varying stripe period T(t) = A + B*cos(π t/L + φ) over L=2400 s (205→415→255 s).
+        L = STRIPE_PERIOD_COSINE_L_S
+        T_t = STRIPE_PERIOD_COSINE_A + STRIPE_PERIOD_COSINE_B * np.cos(np.pi * t / L + STRIPE_PERIOD_COSINE_PHI)
+        T_t = np.maximum(T_t, 1.0)  # avoid div by zero
+        v = 2.0 * np.pi / (q * T_t)
+        # Extra amplitude modulation on top of T(t) (independent period v_period_s).
+        v = v * (1.0 + v_amp_frac * np.cos(2.0 * np.pi * t / v_period_s))
         v = np.maximum(v, 1e-6 * v_mean)
     else:
         v_early = v_mean * 1.5
@@ -274,11 +332,10 @@ def example_heterodyne_params(
         v = v_late + (v_early - v_late) * 0.5 * (1.0 - np.tanh((t - transition) / width))
     if constant_J_and_xs:
         # Constant J and x_s (no time-dependent ramp); J gives decay exp(-q²∫J dt) along delay.
-        J = np.full_like(t, 0.5)
+        J = np.full_like(t, J_constant)
         x_s = np.full_like(t, 0.5)
         return J, v, x_s
     # Time-dependent J(t) and x_s(t) in forward t (paper SI Section 3). Both increase with t over the window → ramp.
-    J0 = 1.5
     x_s = 0.25 + 0.45 * (1.0 - np.exp(-t / (xs_tau_frac * tmax)))
     J = J0 * (1.0 - np.exp(-t / (j_tau_frac * tmax)))
     return J, v, x_s
@@ -398,6 +455,13 @@ def main() -> None:
         metavar="FRAC",
         help="Amplitude of v(t) oscillation as fraction of v_mean when --periodic-v (default %(default)s)",
     )
+    parser.add_argument(
+        "--j-constant",
+        type=float,
+        default=DEFAULT_J_CONSTANT,
+        metavar="J",
+        help="Transport coeff J (constant or J0 when time-dep). Lower = gentler antidiagonal decay (default %(default)s)",
+    )
     args = parser.parse_args()
     use_periodic_v = args.periodic_v
 
@@ -426,6 +490,8 @@ def main() -> None:
             v_amp_frac=args.v_amp_frac,
             xs_tau_frac=DEFAULT_XS_TAU_FRAC,
             j_tau_frac=DEFAULT_J_TAU_FRAC,
+            J_constant=args.j_constant,
+            J0=args.j_constant,
         )
         c2_het = c2_heterodyne(t, J_het, v, x_s, q=0.054, phi_deg=0.0, beta=0.5)
         plot_ttc(t, c2_lam, ax=ax_lam, title="Laminar (homodyne) — Eq. 1", cmap="viridis")
@@ -439,13 +505,22 @@ def main() -> None:
         return
 
     if args.laminar:
+        path = _ttc_path(POSITION_NAME, SAMPLE_ID, MASK_N)
+        if not path.exists():
+            raise FileNotFoundError(f"TTC array not found: {path}")
+        C_real = load_ttc(path)
+        C_real = apply_time_range(C_real, time_range)
+        if C_real.shape[0] != len(t) or C_real.shape[1] != len(t):
+            raise ValueError(f"Real TTC shape {C_real.shape} does not match time length {len(t)}")
         J, gammadot = example_laminar_params(t, t_max)
         c2_lam = c2_laminar(
             t, J, gammadot,
             q=0.054, h=1.0, phi_deg=0.0, beta=0.5,
         )
-        fig, ax = plt.subplots(1, 1, figsize=(6, 5))
-        plot_ttc(t, c2_lam, ax=ax, title="Laminar (homodyne) TTC — Eq. 1", cmap="viridis")
+        fig, (ax_left, ax_right) = plt.subplots(1, 2, figsize=(12, 5))
+        plot_ttc(t, C_real, ax=ax_left, title="Data (laminar)", cmap="viridis")
+        plot_ttc(t, c2_lam, ax=ax_right, title="Model (laminar) — Eq. 1", cmap="viridis")
+        plt.tight_layout()
         if args.save:
             fig.savefig("ttc_laminar.png", dpi=150, bbox_inches="tight")
             print("Saved ttc_laminar.png")
@@ -454,6 +529,13 @@ def main() -> None:
         return
 
     if args.heterodyne:
+        path = _ttc_path(POSITION_NAME, SAMPLE_ID, MASK_N)
+        if not path.exists():
+            raise FileNotFoundError(f"TTC array not found: {path}")
+        C_real = load_ttc(path)
+        C_real = apply_time_range(C_real, time_range)
+        if C_real.shape[0] != len(t) or C_real.shape[1] != len(t):
+            raise ValueError(f"Real TTC shape {C_real.shape} does not match time length {len(t)}")
         J, v, x_s = example_heterodyne_params(
             t, t_max,
             stripe_period_s=DEFAULT_STRIPE_PERIOD_S,
@@ -463,13 +545,17 @@ def main() -> None:
             v_amp_frac=args.v_amp_frac,
             xs_tau_frac=DEFAULT_XS_TAU_FRAC,
             j_tau_frac=DEFAULT_J_TAU_FRAC,
+            J_constant=args.j_constant,
+            J0=args.j_constant,
         )
         c2_het = c2_heterodyne(
             t, J, v, x_s,
             q=0.054, phi_deg=0.0, beta=0.5,
         )
-        fig, ax = plt.subplots(1, 1, figsize=(6, 5))
-        plot_ttc(t, c2_het, ax=ax, title="Heterodyne (two-component) TTC — Eq. 2", cmap="plasma")
+        fig, (ax_left, ax_right) = plt.subplots(1, 2, figsize=(12, 5))
+        plot_ttc(t, C_real, ax=ax_left, title="Data (heterodyne)", cmap="plasma")
+        plot_ttc(t, c2_het, ax=ax_right, title="Model (heterodyne) — Eq. 2", cmap="plasma")
+        plt.tight_layout()
         if args.save:
             fig.savefig("ttc_heterodyne.png", dpi=150, bbox_inches="tight")
             print("Saved ttc_heterodyne.png")
