@@ -2425,7 +2425,7 @@ def _open_h5_safely(path: Path) -> h5py.File:
 
 
 def data_structure_viewer():
-    run = load_run_data(BASE_DIR, SAMPLE_ID, mask_n=MASK_N)
+    run = load_run_data(_resolve_base_dir(SAMPLE_ID), SAMPLE_ID, mask_n=MASK_N)
 
     print("\nLoaded:")
     print("  raw:", run.raw_path)
@@ -2446,6 +2446,129 @@ def data_structure_viewer():
         f_res.close()
 
     run.close()
+
+
+def rocking_curve_data_structure_viewer():
+    """Print the HDF5 tree of the rocking-curve file for sample A073."""
+    rc_path = _resolve_base_dir("A073") / "data" / "A073_rocking_curve_cropped.h5"
+    print(f"\nRocking-curve file: {rc_path}")
+    f_rc = _open_h5_safely(rc_path)
+    try:
+        _print_h5_tree(f_rc, max_depth=7, max_children_per_group=300, show_attrs=False)
+    finally:
+        f_rc.close()
+
+
+def rocking_curve_rsm(
+    *,
+    energy_eV: float = 12_229.75,
+    pixel_size_m: float = 76e-6,
+    det_distance_m: float = 11.60,
+    beam_center_x: float = 1709.5,
+    beam_center_y: float = 844.0,
+    huber_eta_deg: float = 5.2596,
+    huber_delta_deg: float = 9.7615,
+    delta_eta_deg: float = 0.002,
+    grid_bins: int = 200,
+):
+    """2-D reciprocal-space map from the A073 rocking-curve via xrayutilities.
+
+    A single-axis rocking scan (varying ω = η) sweeps the Ewald sphere
+    through the (q‖, q⊥) scattering plane.  The out-of-plane component
+    q_x is identically zero, so the reconstruction is 2-D.
+
+    Produces two panels:
+      Left  — 2-D RSM in (q‖, q⊥) on a log colour scale.
+      Right — summed detector intensity vs. rocking angle η.
+
+    Parameters
+    ----------
+    energy_eV        : X-ray energy [eV] from monochromator readback.
+    pixel_size_m     : Detector pixel pitch [m].
+    det_distance_m   : Sample-to-detector distance [m].
+    beam_center_x/y  : Direct-beam pixel coordinates on the full detector.
+    huber_eta_deg    : Central sample rocking angle η [°].
+    huber_delta_deg  : Detector arm angle δ ≈ 2θ [°].
+    delta_eta_deg    : Rocking-angle step per frame [°].
+    grid_bins        : Number of pixels along each RSM axis.
+    """
+    import xrayutilities as xu
+
+    # ---- load data ----
+    rc_path = _resolve_base_dir("A073") / "data" / "A073_rocking_curve_cropped.h5"
+    f_rc = _open_h5_safely(rc_path)
+    roi = np.array(f_rc.attrs["roi"])  # [row_lo, row_hi, col_lo, col_hi]
+    data = np.array(f_rc["data"], dtype=np.float64)  # (n_frames, Nrow, Ncol)
+
+    # np.save('data.npy', data)  # Save the data array to a .npy file for later use
+
+    f_rc.close()
+
+    n_frames, Nch1, Nch2 = data.shape
+    cch1 = beam_center_y - roi[0]
+    cch2 = beam_center_x - roi[2]
+
+    # ---- xrayutilities geometry ----
+    hxrd = xu.HXRD([1, 1, 0], [0, 0, 1], en=energy_eV)
+    hxrd.Ang2Q.init_area(
+        "z-", "y+",
+        cch1=cch1, cch2=cch2,
+        Nch1=Nch1, Nch2=Nch2,
+        distance=det_distance_m,
+        pwidth1=pixel_size_m, pwidth2=pixel_size_m,
+    )
+
+    eta_list = huber_eta_deg + (np.arange(n_frames) - n_frames / 2) * delta_eta_deg
+
+    # ---- grid into 2-D RSM (q‖, q⊥) ----
+    gridder = xu.Gridder2D(grid_bins, grid_bins)
+    gridder.KeepData(True)
+
+    frame_sums = np.zeros(n_frames)
+    print(f"Gridding {n_frames} frames into {grid_bins}×{grid_bins} RSM …")
+    for i in range(n_frames):
+        _qx, qy, qz = hxrd.Ang2Q.area(
+            eta_list[i], huber_delta_deg, en=energy_eV, deg=True,
+        )
+        frame_i = data[i]
+        gridder(qy.ravel(), qz.ravel(), frame_i.ravel())
+        frame_sums[i] = frame_i.sum()
+    print("  done.")
+
+    rsm = gridder.data          # (grid_bins, grid_bins)
+    q_par = gridder.xaxis       # q‖  (varies with η)
+    q_perp = gridder.yaxis      # q⊥  (varies with detector pixel)
+
+    # ---- plot ----
+    fig, (ax_rsm, ax_rc) = plt.subplots(
+        1, 2, figsize=(13, 5),
+        gridspec_kw={"width_ratios": [1.4, 1]},
+    )
+
+    log_rsm = np.log1p(rsm)
+    im = ax_rsm.pcolormesh(
+        q_par, q_perp, log_rsm.T, cmap="magma", shading="auto",
+    )
+    ax_rsm.set_xlabel(r"$q_\parallel$ [$\AA^{-1}$]")
+    ax_rsm.set_ylabel(r"$q_\perp$ [$\AA^{-1}$]")
+    ax_rsm.set_title("Reciprocal-space map  (log scale)")
+    ax_rsm.set_aspect("auto")
+    fig.colorbar(im, ax=ax_rsm, label=r"$\ln(1 + I)$", shrink=0.85)
+
+    ax_rc.plot(eta_list, frame_sums, "C0-", lw=1.2)
+    ax_rc.set_xlabel(r"$\eta$ [°]")
+    ax_rc.set_ylabel("Summed intensity [counts]")
+    ax_rc.set_title("Rocking curve")
+    ax_rc.ticklabel_format(axis="y", style="sci", scilimits=(0, 0))
+
+    fig.suptitle(
+        f"A073 NaBH₄ (110) rocking-curve RSM  —  "
+        f"E = {energy_eV / 1e3:.2f} keV,  "
+        f"Δη = {delta_eta_deg:.4f}°,  {n_frames} frames",
+        fontsize=11,
+    )
+    fig.tight_layout(rect=[0, 0, 1, 0.93])
+    plt.show()
 
 
 # ------------------------------------------------------------------ #
@@ -3087,8 +3210,9 @@ def g2_plotter(filename):
 
 def ttc_plotter(filename):
     with h5py.File(filename, "r") as f:
-        C = f["xpcs/twotime/correlation_map/c2_00194"][...]
+        C = f["xpcs/twotime/correlation_map/c2_00145"][...]
     C = C + C.T - np.diag(np.diag(C))
+    np.save("ttc_map.npy", C)
     # renomalize C
     C = C - np.min(C)
     C = C / np.max(C)
@@ -9617,6 +9741,191 @@ def corr_plot_of_period_vs_diagonal_start_both_lineouts():
         data, dt_s=DT_S, drop_first_antidiag=5, drop_first_horizontal=0,
         half_window=5, fmin=1 / 1000, fmax=1 / 10, detrend=True, window="hann",
     )
+
+
+def normalisation_comparison(
+    *,
+    sample_id: str | None = None,
+    mask_n: int | None = None,
+    base_dir: Path | None = None,
+    clip_hi_percentile: float = 99.9,
+    cmap: str = "plasma",
+    figsize=(14.0, 4.5),
+):
+    """
+    Plot (t1, t2) normalisation maps for Corr-TTC, G-TTC, and Twotime.
+
+    Uses raw ROI intensity I(t,p) for the given sample and mask. Three panels:
+      Left:   Corr-TTC  — denominator μ(t₁)μ(t₂), μ = mean intensity over pixels
+      Middle: G-TTC     — denominator σ(t₁)σ(t₂), σ = per-frame std over pixels
+      Right:  Twotime   — factor n(t₁)n(t₂)P, n = 1/S(t), S = sum over pixels of I_smooth
+
+    Each map has the same shape as the corresponding TTC and is displayed with
+    percentile clipping for visibility.
+    """
+    if sample_id is None:
+        sample_id = SAMPLE_ID
+    if mask_n is None:
+        mask_n = MASK_N
+    if base_dir is None:
+        base_dir = RESULTS_BASE_DIR
+    base_dir = Path(base_dir)
+    # load_run_data expects project root (parent of Twotime_PostExpt_01 and data/).
+    # RESULTS_BASE_DIR is typically the Twotime_PostExpt_01 folder; use parent as project root.
+    # For local data, use BASE_DIR_OVERRIDES[sample_id] like find_results_hdf_direct.
+    project_root = base_dir.parent if base_dir.name == "Twotime_PostExpt_01" else base_dir
+    project_root = BASE_DIR_OVERRIDES.get(sample_id, project_root)
+
+    run = load_run_data(project_root, sample_id, mask_n=int(mask_n))
+    n_frames = int(run.dset_raw.shape[0])
+    I, _ = extract_roi_intensity_matrix(
+        run.dset_raw,
+        dynamic_roi_map=run.dynamic_roi_map,
+        mask_n=int(mask_n),
+        start=0,
+        stop=n_frames,
+        stride=1,
+    )
+    I = np.asarray(I, dtype=np.float64)
+    T, P = I.shape
+    if T < 2 or P < 2:
+        raise ValueError(f"Need at least 2 frames and 2 pixels, got I.shape={I.shape}")
+
+    # Corr-TTC: denominator μ(t₁)μ(t₂)
+    mu = I.mean(axis=1)
+    N_corr = np.outer(mu, mu)
+
+    # G-TTC: denominator σ(t₁)σ(t₂)
+    var = (I * I).mean(axis=1) - mu * mu
+    var = np.clip(var, 0.0, np.inf)
+    sigma = np.sqrt(var)
+    N_g = np.outer(sigma, sigma)
+
+    # Twotime: n(t) = 1/S(t), S(t) = sum_p I_smooth(t,p); factor n(t₁)n(t₂)P
+    I_smooth = _smooth_like_twotime(I)
+    S = I_smooth.sum(axis=1)
+    S = np.where(S <= 0, 1.0, S)
+    n = 1.0 / S
+    N_tw = np.outer(n, n) * float(P)
+
+    fig, axes = plt.subplots(1, 3, figsize=figsize)
+    for ax, name, arr in [
+        (axes[0], "Corr-TTC", N_corr),
+        (axes[1], "G-TTC", N_g),
+        (axes[2], "Twotime", N_tw),
+    ]:
+        arr_plot = clip_ttc(arr, p_hi=clip_hi_percentile)
+        ax.imshow(arr_plot, origin="lower", cmap=cmap, interpolation="nearest", aspect="equal")
+        ax.set_title(name)
+        ax.set_xlabel(r"$\mathit{t}_1$")
+        ax.set_ylabel(r"$\mathit{t}_2$")
+
+    fig.suptitle(f"Normalisation maps — {sample_id} M{mask_n}", fontsize=11)
+    plt.tight_layout()
+    plt.show()
+    return {"N_corr": N_corr, "N_g": N_g, "N_tw": N_tw, "I": I}
+
+
+def mask_partition_investigation(
+    *,
+    sample_id: str | None = None,
+    mask_n: int | None = None,
+    base_dir: Path | None = None,
+    n_rows: int = 2,
+    n_cols: int = 2,
+    clip_hi_percentile: float = 99.9,
+    cmap: str = "plasma",
+    figsize: tuple[float, float] | None = None,
+):
+    """
+    Partition the given mask into an n_rows×n_cols grid (no shared pixels),
+    compute twotime TTC for each sub-mask from raw frames, and display in a
+    n_rows×n_cols figure.
+
+    Uses the same data source as normalisation_comparison: raw ROI intensities
+    via load_run_data and extract_roi_intensity_matrix. The mask bounding box
+    is split into n_rows bands (by y) and n_cols bands (by x); each pixel is
+    assigned to exactly one cell (ri, ci) by its coordinates.
+    """
+    if sample_id is None:
+        sample_id = SAMPLE_ID
+    if mask_n is None:
+        mask_n = MASK_N
+    if base_dir is None:
+        base_dir = RESULTS_BASE_DIR
+    base_dir = Path(base_dir)
+    project_root = base_dir.parent if base_dir.name == "Twotime_PostExpt_01" else base_dir
+    project_root = BASE_DIR_OVERRIDES.get(sample_id, project_root)
+
+    run = load_run_data(project_root, sample_id, mask_n=int(mask_n))
+    roi_map = run.dynamic_roi_map
+    in_mask = (roi_map == mask_n)
+    ys, xs = np.where(in_mask)
+    if ys.size == 0 or xs.size == 0:
+        raise ValueError(f"Mask {mask_n} has no pixels in ROI map for {sample_id}")
+
+    ymin, ymax = int(ys.min()), int(ys.max())
+    xmin, xmax = int(xs.min()), int(xs.max())
+
+    # Partition into n_rows × n_cols: assign each pixel to cell (ri, ci) by binning y and x
+    yy, xx = np.meshgrid(np.arange(roi_map.shape[0]), np.arange(roi_map.shape[1]), indexing="ij")
+    y_edges = np.linspace(ymin, ymax + 1, n_rows + 1, dtype=np.float64)
+    x_edges = np.linspace(xmin, xmax + 1, n_cols + 1, dtype=np.float64)
+    row_idx = np.digitize(yy.astype(np.float64), y_edges) - 1
+    col_idx = np.digitize(xx.astype(np.float64), x_edges) - 1
+    row_idx = np.clip(row_idx, 0, n_rows - 1)
+    col_idx = np.clip(col_idx, 0, n_cols - 1)
+
+    sub_masks = []
+    labels = []
+    for ri in range(n_rows):
+        for ci in range(n_cols):
+            m = in_mask & (row_idx == ri) & (col_idx == ci)
+            sub_masks.append(m)
+            labels.append(f"({ri},{ci})")
+
+    n_frames = int(run.dset_raw.shape[0])
+    ttcs = []
+    for m in sub_masks:
+        if np.sum(m) < 2:
+            ttcs.append(None)
+            continue
+        I, _ = extract_roi_intensity_matrix(
+            run.dset_raw,
+            roi_mask=m,
+            start=0,
+            stop=n_frames,
+            stride=1,
+        )
+        I = np.asarray(I, dtype=np.float64)
+        if I.shape[0] < 2 or I.shape[1] < 2:
+            ttcs.append(None)
+            continue
+        I_smooth = _smooth_like_twotime(I)
+        C_ut = _compute_ttc_like_twotime(I_smooth)
+        C = _symmetrize_upper_triangle(C_ut)
+        ttcs.append(C)
+
+    if figsize is None:
+        figsize = (4.0 * n_cols, 4.0 * n_rows)
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=figsize)
+    axes = np.asarray(axes)
+    if axes.ndim == 1:
+        axes = axes.reshape(1, -1)
+    for idx, (ax, C) in enumerate(zip(axes.flat, ttcs)):
+        if C is not None:
+            Cplot = clip_ttc(C, p_hi=clip_hi_percentile)
+            ax.imshow(Cplot, origin="lower", cmap=cmap, interpolation="nearest", aspect="equal")
+        else:
+            ax.text(0.5, 0.5, "Too few pixels", transform=ax.transAxes, ha="center", va="center")
+        ax.set_title(labels[idx])
+        ax.set_xlabel(r"$\mathit{t}_1$")
+        ax.set_ylabel(r"$\mathit{t}_2$")
+
+    fig.suptitle(f"TTC by {n_rows}×{n_cols} partition — {sample_id} M{mask_n} (twotime)", fontsize=11)
+    plt.tight_layout()
+    plt.show()
+    return {"ttcs": ttcs, "sub_masks": sub_masks, "labels": labels}
 
 
 def corr_fft_2d_plot():
