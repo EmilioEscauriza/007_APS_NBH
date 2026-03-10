@@ -1,4 +1,4 @@
-# Experimental Parameters — APS 08-ID-E
+# October 2025 run - Experimental Parameters — APS 08-ID-E
 
 | Parameter              | Value                   |
 |------------------------|-------------------------|
