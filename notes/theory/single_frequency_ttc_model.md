@@ -1,4 +1,4 @@
-# Single-Frequency TTC Model
+# Single-Frequency TTC Model (ω and 2ω)
 
 *Wednesday, January 28, 2026*
 
@@ -6,63 +6,64 @@
 
 ## Overview
 
-A clean physical picture separates what fluctuates, where it fluctuates, and how those fluctuations are coupled in time.
+A clean physical picture separates what fluctuates, where it fluctuates, and how those fluctuations are coupled in time. The model uses two frequencies: **ω** (base) and **2ω** (second harmonic).
 
 ---
 
 ## Model structure
 
-$$C_2(t_1, t_2) = A\cos(\omega v) + m\cos(\omega u + \phi)\cos\!\left(\tfrac{\omega}{2}v\right)$$
+$$C_2(t_1, t_2) = C_0 + A\cos(2\omega v) + m\cos(2\omega u + \phi)\cos(\omega v)$$
 
 where:
 - $u = (t_1 + t_2)/2$ (mean time)
 - $v = t_2 - t_1$ (lag time)
 
+Linked intensity-like trace (for intuition): $I(t) = C_0 + a_I\cos(2\omega t) + m_I\cos(\omega t + \phi)$.
+
 ---
 
 ## Term-by-term interpretation
 
-### 1. $A\cos(\omega v)$: Stationary oscillatory dynamics
+### 1. $A\cos(2\omega v)$: Stationary oscillatory dynamics (2ω in delay)
 
 Depends only on lag time $v$. Physically:
 
 - Stationary, time-translation–invariant process
-- Well-defined oscillatory mode with period $T = 2\pi/\omega$
+- Oscillatory mode with period $T_{2\omega} = \pi/\omega$ in the delay direction
 - Coherent relaxation, hopping, or vibrational process that is always present
 
-In XPCS language: subset of scatterers undergoes periodic/quasi-periodic dynamics that do not age or drift during measurement. This is the "safe" term, behaving like $g_2$-based intuition expects.
+In XPCS language: subset of scatterers undergoes periodic/quasi-periodic dynamics that do not age or drift during measurement. This is the "safe" term, behaving like $g_2$-based intuition expects. The 2ω gives finer stripe spacing in the TTC.
 
-### 2. $m\cos(\omega u + \phi)$: Non-stationarity or slow modulation
+### 2. $m\cos(2\omega u + \phi)$: Non-stationarity or slow modulation
 
 Depends on mean time $u$. Means:
 
 - Dynamics are not the same at early and late times
-- System is slowly modulated, intermittently activated, or drifting
+- System is modulated at 2ω in mean time (period $T = \pi/\omega$ in $u$)
 
 Physically represents:
-- Slow environmental or structural evolution
+- Environmental or structural evolution at the second harmonic
 - Periodic activation of dynamics (e.g., stress build-up and release)
 - Switching between dynamical states
 
 In Bragg XPCS context: grain-boundary rearrangements, intermittent defect motion, phase-front breathing, or periodic strain accumulation. This term alone violates stationarity, hence the TTC structure.
 
-### 3. $\cos(\tfrac{\omega}{2} v)$: Subharmonic lag-time structure
+### 3. $\cos(\omega v)$: Base-frequency lag-time structure
 
-Compared to the main $A$-term:
+In the product term, the lag-time factor is at **ω** (slower than the 2ω stripes):
 
-- Lag-time oscillation is slower by a factor of 2
-- System "remembers" correlations over longer lag times
+- Lag-time oscillation has period $T_\omega = 2\pi/\omega$
+- Complements the 2ω term: two frequencies in the delay direction
 
 Physically suggests:
-- Two-step or paired process
-- Correlations requiring two events to decorrelate fully
-- Alternating forward–backward motion, stick–slip, or reversible rearrangements
+- Base mode in the correlation
+- First harmonic (ω) and second harmonic (2ω) both present—e.g. anharmonic or intensity-quadratic response
 
-Natural for: periodic grain-boundary diffusion, back-and-forth defect migration, elastic loading/unloading cycles.
+Natural for: second-harmonic generation in the correlation, anharmonic motion, or detection sensitive to both ω and 2ω.
 
-### 4. Product structure: $\cos(\omega u)\cos(\tfrac{\omega}{2} v)$
+### 4. Product structure: $\cos(2\omega u + \phi)\cos(\omega v)$
 
-Means lag-time correlations only appear strongly during certain global-time windows. Produces:
+Means lag-time correlations at ω are gated by mean-time modulation at 2ω. Produces:
 
 - Diamond or chequerboard TTC patterns
 - Oscillations localized in $u$
@@ -72,66 +73,42 @@ Matches observation that only specific masks around the Bragg peak show oscillat
 
 ---
 
-## Why the half-frequency term matters
+## Why the two frequencies (ω and 2ω) matter
 
 ### Physical meaning
 
-The term $\cos(\tfrac{\omega}{2} v)$ means:
+The model has **ω** (base) and **2ω** (second harmonic):
 
-- Correlation repeats only after **twice** the period of the underlying oscillation
-- System needs two cycles before it "looks the same again" in lag time
-- Classic period doubling in correlations, not necessarily in the motion itself
+- Stripes and mean-time modulation use **2ω** (faster).
+- The product term also has **ω** in the delay direction (slower).
 
-### Why correlations can have half the frequency
+So the correlation carries both a fundamental and its first harmonic—e.g. anharmonic motion or intensity ∝ displacement².
 
-For microscopic displacement $x(t) = x_0 \cos(\omega t)$, scattering phase depends on:
+### Why 2ω appears
 
-$$\Delta \phi \sim q [x(t_2) - x(t_1)]$$
+- **Intensity ∝ displacement²:** If the signal is quadratic in displacement $x(t) \sim \cos(\omega t)$, then $x^2 \sim \cos(2\omega t) + \text{const}$, so 2ω appears.
+- **First harmonic:** Nonlinear or anharmonic dynamics excite 2ω alongside ω.
 
-After half a cycle, displacement reverses sign. Structure may be in a different configuration but not fully decorrelated. Only after a full forward–backward cycle does the phase difference repeat. So:
+Common in: anharmonic oscillators, intensity-sensitive detection, nonlinear coupling.
 
-$$\omega_\text{corr} = \tfrac{1}{2}\omega_\text{motion}$$
-
-Common in: reversible motion, elastic deformation, back-and-forth defect hopping.
-
-### Two-state or back-and-forth dynamics
-
-Half-frequency almost always means the system has two equivalent configurations:
-
-- Grain boundary: left → right → left
-- Defect: A → B → A
-- Strain: loads → unloads → loads
-
-Microscopic motion has frequency $\omega$, but configuration repeats every two steps, so correlations repeat at $\omega/2$. This explains diamonds/chequerboards, alternating bright/dark lobes, and strong anti-diagonal structure in TTC.
-
-### Why this matters for Bragg XPCS
-
-At a Bragg peak:
-
-- Intensity is sensitive to **phase**, not just magnitude
-- Opposite displacements can produce similar intensities
-- Sign changes in displacement don't immediately decorrelate the speckle
-
-So Bragg XPCS is especially prone to half-frequency effects. In diffuse scattering you might lose this; in Bragg it survives.
-
-### Why half-frequency appears only in the modulated term
+### Relation to the product term
 
 Model structure:
 
-$$A\cos(\omega v) + m\cos(\omega u)\cos\!\left(\tfrac{\omega}{2}v\right)$$
+$$C_0 + A\cos(2\omega v) + m\cos(2\omega u + \phi)\cos(\omega v)$$
 
 Interpretation:
 
-- Stationary background dynamics decorrelate every cycle → full frequency
-- Intermittent/gated dynamics require two cycles → half frequency
+- Stripes: 2ω in delay $v$.
+- Modulated term: 2ω in mean time $u$, ω in delay $v$—so the same base ω drives the slower lag structure, and 2ω drives the faster stripes and modulation.
 
-These are **not the same physical process**. This is a huge experimental clue.
+The linked trace $I(t) = C_0 + a_I\cos(2\omega t) + m_I\cos(\omega t + \phi)$ reflects both frequencies in a single-time view.
 
 ---
 
 ## Physical interpretation (one sentence)
 
-A periodically active nanoscale process (grain boundary, defect cluster, strain front) undergoes coherent oscillatory motion, but only during certain phases of a slower cycle, producing non-stationary, subharmonic correlations in the TTC.
+A periodically active nanoscale process is modulated at 2ω in mean time; the correlation carries both ω and 2ω in the delay direction, producing non-stationary, two-frequency structure in the TTC.
 
 ---
 
@@ -142,26 +119,26 @@ At a Bragg peak:
 - Sensitive to phase and strain, not just density
 - Small reversible displacements can dominate the signal
 - Collective motion of ordered regions naturally produces oscillatory TTC features
+- Intensity can depend quadratically on displacement, giving 2ω from ω motion
 
 The model is the minimal mathematical structure capturing:
-- Stationary dynamics
-- Non-stationarity
-- Mode coupling
-- Subharmonic temporal structure
+- Stationary dynamics (2ω in $v$)
+- Non-stationarity (2ω in $u$)
+- Mode coupling (product term)
+- Two-frequency (ω and 2ω) temporal structure
 
 ---
 
 ## Experimental implications
 
-If the half-frequency is real (not a fitting artifact), then:
+If the two-frequency (ω and 2ω) structure is real (not a fitting artifact), then:
 
-- Dynamics are reversible or near-reversible
-- Seeing collective motion, not random diffusion
-- Grain boundaries or strain fields far more likely than ionic hopping
-- System is not ergodic on the measurement timescale
+- Dynamics have a measurable second harmonic (anharmonic or quadratic response)
+- Both base and first harmonic appear in the correlation
+- Modulated term ties mean-time (2ω) and lag-time (ω and 2ω) together
 
 This also explains:
-- Why only some masks show oscillations
+- Why only some masks show oscillations (modulation in $u$)
 - Why TTC diagonals aren't always maximal
 - Why $g_2$ alone hides the physics
 
@@ -169,4 +146,4 @@ This also explains:
 
 ## One-sentence takeaway
 
-A half-frequency in $v$ means the system must complete a full forward-and-back cycle before its microscopic configuration truly repeats, which is the hallmark of reversible, collective dynamics such as elastic or grain-boundary motion.
+The model uses ω (base) and 2ω (second harmonic): stripes and mean-time modulation at 2ω, with ω in the product’s delay factor and in the linked trace $I(t)$, consistent with anharmonic or intensity-quadratic dynamics and non-stationary TTC structure.

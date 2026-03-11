@@ -202,7 +202,7 @@ import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider, Button
 
 
-def make_I_and_ttc_product_gui_twofreq_half(
+def make_I_and_ttc_product_gui_single_freq(
     *,
     n: int = 900,
     dt_s: float = 1.0,
@@ -218,12 +218,12 @@ def make_I_and_ttc_product_gui_twofreq_half(
       v = (t2 - t1)
 
       C(t1,t2) = C0
-               + A * cos(omega * v)
-               + m * cos(omega * u + phi) * cos((omega/2) * v)
+               + A * cos(2*omega * v)
+               + m * cos(2*omega * u + phi) * cos(omega * v)
 
     Linked intensity-like trace (for intuition only)
     ------------------------------------------------
-      I(t) = C0 + aI*cos(omega*t) + mI*cos((omega/2)*t + phi)
+      I(t) = C0 + aI*cos(2*omega*t) + mI*cos(omega*t + phi)
 
     where aI, mI are smooth functions of A, m (keeps sign, compresses range):
       aI = sign(A) * sqrt(|A|)
@@ -240,17 +240,17 @@ def make_I_and_ttc_product_gui_twofreq_half(
 
     def model(C0: float, A: float, omega: float, m: float, phi: float) -> np.ndarray:
         omega = float(omega)
-        omega_m = 0.5 * omega
-        stripes = float(A) * np.cos(omega * v)
-        prod = np.cos(omega * u + float(phi)) * np.cos(omega_m * v)
+        omega_2 = 2.0 * omega
+        stripes = float(A) * np.cos(omega_2 * v)
+        prod = np.cos(omega_2 * u + float(phi)) * np.cos(omega * v)
         return float(C0) + stripes + float(m) * prod
 
     def model_I(C0: float, A: float, omega: float, m: float, phi: float) -> np.ndarray:
         omega = float(omega)
-        omega_m = 0.5 * omega
+        omega_2 = 2.0 * omega
         aI = np.sign(A) * np.sqrt(abs(A))
         mI = np.sign(m) * np.sqrt(abs(m))
-        return float(C0) + aI * np.cos(omega * t) + mI * np.cos(omega_m * t + float(phi))
+        return float(C0) + aI * np.cos(omega_2 * t) + mI * np.cos(omega * t + float(phi))
 
     def clip_for_display(C: np.ndarray) -> np.ndarray:
         if clip_percentile is None:
@@ -338,6 +338,17 @@ def make_I_and_ttc_product_gui_twofreq_half(
     ax_info = fig.add_subplot(gs_sl[1, 1:])
     ax_info.axis("off")
 
+    # Text box covering bottom-right portion of figure (figure coordinates)
+    ax_eq = fig.add_axes([0.50, 0.04, 0.47, 0.22])
+    ax_eq.set_facecolor((1.0, 0.92, 0.8, 0.95))  # wheat, slight transparency
+    ax_eq.axis("off")
+    ax_eq.text(0.1, 0.50, r"$u = (t_1+t_2)/2$,  $v = t_2 - t_1$",
+               transform=ax_eq.transAxes, fontsize=16, va="top", ha="left")
+    ax_eq.text(0.1, 0.30, r"$C = C_0 + A\cos(2\omega v) + m\cos(2\omega u + \phi)\cos(\omega v)$",
+               transform=ax_eq.transAxes, fontsize=16, va="top", ha="left")
+    ax_eq.text(0.1, 0.10, r"$I(t) = C_0 + a_I\cos(2\omega t) + m_I\cos(\omega t + \phi)$",
+               transform=ax_eq.transAxes, fontsize=16, va="top", ha="left")
+
     for s in (s_C0, s_A, s_m, s_phi, s_omega):
         s.label.set_fontsize(9)
         s.valtext.set_fontsize(9)
@@ -358,9 +369,9 @@ def make_I_and_ttc_product_gui_twofreq_half(
         busy["flag"] = True
         try:
             omega = float(s_omega.val)
-            omega_m = 0.5 * omega
-            Tu = (2.0 * np.pi / omega) if omega > 0 else np.inf
-            Tm = (2.0 * np.pi / omega_m) if omega_m > 0 else np.inf
+            omega_2 = 2.0 * omega
+            T_omega = (2.0 * np.pi / omega) if omega > 0 else np.inf
+            T_2omega = (2.0 * np.pi / omega_2) if omega_2 > 0 else np.inf
 
             # TTC (exact same as your model)
             C = model(
@@ -391,11 +402,11 @@ def make_I_and_ttc_product_gui_twofreq_half(
             ax_I.relim()
             ax_I.autoscale_view()
 
-            ax_img.set_title(rf"TTC model | $\omega$={omega:.5f} rad/s, $\omega/2$={omega_m:.5f} rad/s")
+            ax_img.set_title(rf"TTC model | $\omega$={omega:.5f} rad/s, $2\omega$={omega_2:.5f} rad/s")
             info_text.set_text(
                 f"Derived periods:\n"
-                f"  T(ω)     = {Tu:.1f} s\n"
-                f"  T(ω/2)   = {Tm:.1f} s"
+                f"  T(ω)   = {T_omega:.1f} s\n"
+                f"  T(2ω)  = {T_2omega:.1f} s"
             )
 
             fig.canvas.draw_idle()
@@ -423,4 +434,4 @@ def make_I_and_ttc_product_gui_twofreq_half(
 
 
 if __name__ == "__main__":
-    make_I_and_ttc_product_gui_twofreq_half(n=800, dt_s=1.0, clip_percentile=99.5)
+    make_I_and_ttc_product_gui_single_freq(n=800, dt_s=1.0, clip_percentile=99.5)

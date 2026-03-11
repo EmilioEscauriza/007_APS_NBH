@@ -4,7 +4,7 @@
 |------------------------|-------------------------|
 | Beam energy (keV)      | 12.4                    |
 | Sample–detector (m)    | 2.2                     |
-| Pixel size             | 55                      |
+| Pixel size   (µm)      | 55                      |
 | Detector area (px)     | 1676 × 2100             |
 | Detector pixels (px)   | 1556 × 1813             |
 | Detector model         | Lambda 2M               |

@@ -157,7 +157,7 @@ def make_ttc_model_gui_two_freqs(
 if __name__ == "__main__":
     make_ttc_model_gui_two_freqs(
         n=450,
-        tmax=4800.0,
+        tmax=800.0,
         C0=0.0,
         Ad=1.0,
         Ai=1.0,
