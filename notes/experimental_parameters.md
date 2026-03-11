@@ -2,12 +2,12 @@
 
 | Parameter              | Value                   |
 |------------------------|-------------------------|
-| Beam energy            | 12.4 keV                |
-| Sample–detector distance | 2.2 m                 |
-| Pixel size             | 55 µm                   |
-| Detector area          | 1676 × 2100 pixels      |
-| Detector pixels        | 1556 × 1813             |
+| Beam energy (keV)      | 12.4                    |
+| Sample–detector (m)    | 2.2                     |
+| Pixel size             | 55                      |
+| Detector area (px)     | 1676 × 2100             |
+| Detector pixels (px)   | 1556 × 1813             |
 | Detector model         | Lambda 2M               |
-| Initial beam size      | 0.125 mm                |
-| Focal spot size        | 4.5 µm (H) × 4.0 µm (V) |
-| Focal distance         | 4.53 m                  |
+| Initial beam size (mm) | 0.125                   |
+| Focal spot size   (µm) | 4.5(H) × 4.0(V)         |
+| Focal distance (m)     | 4.53                    |

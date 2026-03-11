@@ -1,0 +1,77 @@
+% Introduction — Nature-style arc
+% P1  Why sodium SSEs matter
+% P2  NASICON design landscape and conduction mechanisms
+% P3  The measurement gap
+% P4  What this work contributes
+
+The global transition to renewable energy demands safe, cost-effective, and
+high-energy-density electrochemical storage.  Solid-state sodium batteries, in
+which a dense ceramic ion conductor replaces the flammable liquid electrolyte,
+offer intrinsic safety advantages and access to earth-abundant sodium
+resources~\cite{Famprikis2019,Zhao2018}.  Among the candidate sodium
+solid-state electrolytes (SSEs), materials of the Na superionic conductor
+(NASICON) family, with general formula
+Na$_{x}$M$_{2}$(AO$_{4}$)$_{3}$, combine high ionic conductivity with wide
+electrochemical stability windows~\cite{Li2022,Wang2023}.  Yet even the best
+NASICONs achieve room-temperature conductivities of order
+$10^{-3}$\,S\,cm$^{-1}$~\cite{Ma2019,Wang2023}---roughly an order of
+magnitude below typical liquid electrolytes~\cite{He2025}.  Closing this gap
+requires understanding how chemical composition governs the atomic-scale
+dynamics of ion transport.
+
+The NASICON framework consists of corner-sharing MO$_{6}$ octahedra and
+AO$_{4}$ tetrahedra arranged in rhombohedral ($R\bar{3}c$) symmetry, creating
+a three-dimensional network of Na-ion conduction
+channels~\cite{Wang2023}.  Na ions occupy two crystallographically distinct
+sites---Na1\,(6$b$) and Na2\,(18$e$)---connected through triangular geometric
+bottlenecks whose dimensions are set by the framework
+chemistry~\cite{He2025,Wang2023}.  Systematic computational and experimental
+campaigns have established that ionic conductivity is optimised by tuning the
+Na content close to three per formula unit, the average metal-site cation radius to
+${\sim}0.72$\,\AA, and the silicate-to-phosphate polyanion
+ratio~\cite{Wang2023,Ouyang2021}.  A high-entropy strategy---mixing multiple
+metal species on the M~site---was subsequently shown to boost conductivity by
+orders of magnitude through local structural distortions that flatten the
+Na-site energy landscape and promote correlated ion
+migration~\cite{Zeng2022}.  These distortions are predicted to control the
+crossover between single-ion hopping (SIH), favoured when the
+6$b$--18$e$ site-energy difference is large, and occupancy-conserved hopping
+(OCH), which dominates when site energies
+overlap~\cite{He2025}.  Distinguishing between these mechanisms is central to
+rationalising conductivity trends and to formulating predictive design rules
+for next-generation NASICON electrolytes.
+
+Despite rapid progress in computational screening and bulk transport
+measurements, directly observing the lattice-scale dynamics that underpin SIH
+and OCH remains an open challenge.  Electrochemical impedance spectroscopy and
+\textit{ab~initio} molecular dynamics probe macroscopic or simulated
+transport~\cite{Wang2023,Fang2025}, while quasielastic neutron scattering (QENS) and
+nuclear magnetic resonance (NMR) relaxometry access diffusion on their respective characteristic time (\SI{1}{\pico\second}--\SI{1}{\nano\second}/\SI{1}{\micro\second}--\SI{1}{\second}) and
+length (1-\SI{10}{\angstrom}/bulk) scales ~\cite{Pivarnikova2025,Kaus2017}.  None of these techniques,
+however, provides real-time, momentum-resolved sensitivity to collective
+lattice fluctuations during ion conduction.  X-ray photon correlation
+spectroscopy (XPCS) fills this gap: by tracking the temporal decorrelation of
+coherent Bragg speckle patterns, XPCS measures equilibrium and
+non-equilibrium dynamics at the atomic spatial scale on timescales from
+$10^{-2}$ to $10^{3}$\,s~\cite{Shpyrko2014,Sandy2018}.  The advent of
+fourth-generation synchrotron sources now delivers the coherent flux necessary
+to perform Bragg XPCS on micrometre-scale crystallites embedded in
+polycrystalline or composite samples~\cite{Sandy2018}.
+
+Here we report Bragg-peak XPCS measurements on a systematic series of NASICON
+compositions in which the metal species~M is varied to tune the Na-site energy
+landscape while all other compositional parameters are held as constant as
+practicable.  Performed at room temperature on the (116), (104) and (113)
+Bragg reflections, the intensity autocorrelation functions
+$\gttwo(\qvec,\tauval)$ reveal composition-dependent relaxation timescales and
+stretched-exponential exponents~$\beta$ that correlate with the predicted
+SIH--OCH crossover.  Compositions with a larger 6$b$--18$e$ energy difference
+exhibit faster decorrelation and higher~$\beta$, consistent with the spatially
+homogeneous lattice relaxation expected for single-ion hopping, whereas
+compositions in the OCH regime display slower, more heterogeneous dynamics.
+Two-time correlation analysis further uncovers non-stationary fluctuations in
+select compositions, pointing to cooperative rearrangement events during ion
+transport.  These results provide nanoscale dynamic evidence that directly
+links local lattice distortions to the ion-conduction mechanism in NASICONs,
+and establish Bragg XPCS as a characterisation tool for solid-state
+electrolytes and ionic conductors more broadly.

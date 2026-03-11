@@ -1,0 +1,60 @@
+This is BibTeX, Version 0.99d (TeX Live 2025)
+Capacity: max_strings=200000, hash_size=200000, hash_prime=170003
+The top-level auxiliary file: main.aux
+The style file: nature.bst
+Database file #1: references.bib
+Warning--empty title in Famprikis2019
+Warning--empty title in Zhao2018
+Warning--empty title in Li2022
+Warning--empty title in Wang2023
+Warning--empty title in Ma2019
+Warning--empty title in He2025
+Warning--empty title in Ouyang2021
+Warning--empty title in Zeng2022
+Warning--empty title in Fang2025
+Warning--empty title in Pivarnikova2025
+Warning--empty title in Kaus2017
+Warning--empty title in Shpyrko2014
+Warning--empty title in Sandy2018
+You've used 13 entries,
+            1856 wiz_defined-function locations,
+            546 strings with 6564 characters,
+and the built_in function-call counts, 3774 in all, are:
+= -- 298
+> -- 244
+< -- 0
++ -- 86
+- -- 73
+* -- 424
+:= -- 636
+add.period$ -- 26
+call.type$ -- 13
+change.case$ -- 0
+chr.to.int$ -- 0
+cite$ -- 26
+duplicate$ -- 117
+empty$ -- 313
+format.name$ -- 73
+if$ -- 766
+int.to.chr$ -- 0
+int.to.str$ -- 13
+missing$ -- 13
+newline$ -- 55
+num.names$ -- 13
+pop$ -- 26
+preamble$ -- 1
+purify$ -- 0
+quote$ -- 0
+skip$ -- 38
+stack$ -- 0
+substring$ -- 326
+swap$ -- 13
+text.length$ -- 0
+text.prefix$ -- 0
+top$ -- 0
+type$ -- 0
+warning$ -- 13
+while$ -- 34
+width$ -- 15
+write$ -- 119
+(There were 13 warnings)
