@@ -25,6 +25,7 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.colors import LogNorm
 from matplotlib.patches import FancyArrowPatch
 from matplotlib.ticker import FormatStrFormatter
+import os
 
 import cv2
 from scipy.special import erfinv
@@ -2064,6 +2065,7 @@ def plot_custom_mask_and_twotime_ttc(
     frame_slice: slice | None = None,
     stride: int = 1,
     do_pixel_smooth: bool = True,
+    bright_clip_sigma: float | None = 5.0,
     clip_hi_percentile: float = 99.9,
     cmap_mask: str = "magma",
     cmap_ttc: str = "plasma",
@@ -2106,6 +2108,21 @@ def plot_custom_mask_and_twotime_ttc(
         stride=step,
         dtype=np.float32,   # keep memory down
     )
+    # Optional robust clipping of bright pixels to tame nonphysical TTC values
+    if bright_clip_sigma is not None and bright_clip_sigma > 0:
+        # Per-pixel robust statistics along time axis
+        med = np.nanmedian(I, axis=0)
+        mad = np.nanmedian(np.abs(I - med), axis=0)
+        # Convert MAD to an equivalent sigma (Gaussian assumption)
+        sigma = 1.4826 * mad
+        # Avoid zero sigma -> no clipping for those pixels
+        sigma[sigma <= 0] = np.nan
+        thresh = med + bright_clip_sigma * sigma
+        # Broadcast threshold and clip only where finite
+        finite = np.isfinite(thresh)
+        if np.any(finite):
+            I[:, finite] = np.minimum(I[:, finite], thresh[finite])
+
     T, P = I.shape
     if P < 2:
         raise ValueError(f"Custom ROI has too few pixels: P={P}")
@@ -3159,20 +3176,142 @@ def compare_existing_ttc_and_ttc_from_raw():
 def ttc_with_custom_mask():
 
     return exec_mask_and_twotime_ttc_custom_ring(
-        base_dir=BASE_DIR,
+        base_dir=_resolve_base_dir(SAMPLE_ID),
         sample_id=SAMPLE_ID,
         mask_n_for_loading=MASK_N,      # only used to load run/scattering/results paths
-        r_inner_px=160.0,
-        r_outer_px=170.0,
+        r_inner_px=10.0,
+        r_outer_px=50.0,
         center_px=(1198, 216),  # (cx, cy) or None to auto-detect
         bright_percentile=99.9,
-        shape='semi',  # "semi" or "circle"
-        fill='ring',  # "ring" or "solid"
+        shape='circle',  # "semi" or "circle"
+        fill='solid',  # "ring" or "solid"
         frame_slice=slice(0, 2000),     # IMPORTANT: start small to avoid OOM
         stride=1,
         do_pixel_smooth=True,
         clip_hi_percentile=99.9,
     )
+
+
+def equal_q_map_ttc(
+    *,
+    n_rings: int = 8,
+    r_min_px: float | None = None,
+    r_max_px: float | None = None,
+    bright_percentile: float = 99.9,
+    figsize: tuple[float, float] = (6.5, 6.0),
+) -> None:
+    """
+    Build approximate equal-q annular masks around the brightest Bragg peak and
+    overlay their boundaries on the average scattering image.
+
+    For small angular deviations around the Bragg peak, q ∝ scattering angle ∝
+    radius on the detector, so equal-q spacing is well approximated by equal
+    spacing in detector radius (pixels).
+    """
+    run = load_run_data(_resolve_base_dir(SAMPLE_ID), SAMPLE_ID, mask_n=MASK_N)
+    try:
+        img = np.asarray(run.scattering_2d, dtype=np.float64)
+
+        # Use the same Bragg-peak centre as ttc_with_custom_mask (explicit centre_px)
+        # so both figures are directly comparable.
+        cx = float(1198.0)
+        cy = float(216.0)
+
+        ny, nx = img.shape
+
+        # Crop a 500x500 region around the Bragg centre for clarity
+        half = 250
+        y0 = max(int(round(cy)) - half, 0)
+        y1 = min(int(round(cy)) + half, ny)
+        x0 = max(int(round(cx)) - half, 0)
+        x1 = min(int(round(cx)) + half, nx)
+
+        img_crop = img[y0:y1, x0:x1]
+        ny_c, nx_c = img_crop.shape
+
+        # Recompute centre in cropped coordinates
+        cy_c = cy - y0
+        cx_c = cx - x0
+
+        yy, xx = np.indices(img_crop.shape)
+        rr = np.sqrt((xx - cx_c) ** 2 + (yy - cy_c) ** 2)
+
+        # Radial range to tile
+        if r_min_px is None:
+            r_min_px = 0.0
+        if r_max_px is None:
+            r_max_px = 0.9 * float(min(cy_c, cx_c, ny_c - 1 - cy_c, nx_c - 1 - cx_c))
+
+        r_min_px = float(r_min_px)
+        r_max_px = float(r_max_px)
+        if r_max_px <= r_min_px:
+            raise ValueError(f"Invalid radial range: r_min_px={r_min_px}, r_max_px={r_max_px}")
+
+        edges = np.linspace(r_min_px, r_max_px, int(n_rings) + 1)
+
+        # Label map: 0=outside, 1..n_rings = annuli
+        labels = np.zeros_like(rr, dtype=np.int32)
+        for i in range(int(n_rings)):
+            r_lo = edges[i]
+            r_hi = edges[i + 1]
+            m = (rr >= r_lo) & (rr < r_hi)
+            labels[m] = i + 1
+
+        cmap = plt.cm.plasma.copy()
+        cmap.set_under("black")
+        cmap.set_bad("black")
+
+        Ishow = np.ma.masked_less_equal(img_crop, 0.0)
+        vmax = float(Ishow.max()) if Ishow.count() else 1.0
+
+        fig, ax = plt.subplots(figsize=figsize)
+        im = ax.imshow(
+            Ishow,
+            origin="upper",
+            cmap=cmap,
+            norm=LogNorm(vmin=0.1, vmax=vmax),
+            interpolation="nearest",
+        )
+        ax.set_facecolor("black")
+
+        # Draw boundaries between annuli
+        in_mask = labels > 0
+        boundary = np.zeros_like(labels, dtype=bool)
+        boundary[1:, :] |= (labels[1:, :] != labels[:-1, :]) & (in_mask[1:, :] | in_mask[:-1, :])
+        boundary[:, 1:] |= (labels[:, 1:] != labels[:, :-1]) & (in_mask[:, 1:] | in_mask[:, :-1])
+
+        # Light dilation for visibility
+        b = boundary.copy()
+        for _ in range(1):
+            b2 = b.copy()
+            b2[1:, :] |= b[:-1, :]
+            b2[:-1, :] |= b[1:, :]
+            b2[:, 1:] |= b[:, :-1]
+            b2[:, :-1] |= b[:, 1:]
+            b = b2
+        boundary = b
+
+        overlay = np.zeros((ny_c, nx_c, 4), dtype=float)
+        overlay[boundary] = (0.0, 0.0, 0.0, 1.0)
+        ax.imshow(overlay, origin="upper", interpolation="nearest")
+
+        # Mark centre
+        ax.plot(cx_c, cy_c, marker="x", color="white", markersize=6, mew=1.5)
+
+        ax.set_title(
+            f"{SAMPLE_ID}: equal-q annuli around Bragg peak\n"
+            f"centre≈({cy:.1f},{cx:.1f}) px, n_rings={n_rings}"
+        )
+        ax.axis("off")
+
+        div = make_axes_locatable(ax)
+        cax = div.append_axes("right", size="4%", pad=0.05)
+        fig.colorbar(im, cax=cax)
+
+        plt.tight_layout()
+        plt.show()
+    finally:
+        run.close()
 
 
 

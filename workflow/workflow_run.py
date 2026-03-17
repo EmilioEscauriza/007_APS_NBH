@@ -16,8 +16,9 @@ import workflow_config  # noqa: F401  # load config so lib sees it
 import workflow_lib as lib
 
 if __name__ == "__main__":
+
     # ---- raw_data_inspection ----
-    lib.data_structure_viewer()
+    # lib.data_structure_viewer()
     # lib.rocking_curve_data_structure_viewer()
     # lib.rocking_curve_rsm()
     # lib.raw_mask_oscillation_inspector()
@@ -25,9 +26,11 @@ if __name__ == "__main__":
     # lib.compare_existing_vs_corr_entrypoint()
     # lib.compare_existing_ttc_and_cgpt_ttc_from_raw()
     # lib.compare_existing_ttc_and_ttc_from_raw()
-    # lib.ttc_with_custom_mask()
     # lib.mask_roi_viewer_mp4_save()
     # lib.waterfall_roi_entrypoint()
+    # lib.ttc_with_custom_mask()
+    # lib.equal_q_map_ttc(n_rings=8)
+
 
     # ---- analysis (APS 08-IDE) ----
     # lib.h5_file_inspector(lib.h5_file)
@@ -35,7 +38,7 @@ if __name__ == "__main__":
     # lib.ttc_plotter(lib.h5_file)
     # lib.intensity_vs_time(lib.h5_file)
     # lib.static_vs_dynamic_bins(lib.h5_file)
-    # lib.combined_plot(lib.h5_file)
+    lib.combined_plot(lib.h5_file)
     # lib.oauth_test()
     # lib.figure_upload()
     # lib.q_spacing_inspector(lib.h5_file)

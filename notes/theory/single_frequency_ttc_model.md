@@ -48,11 +48,11 @@ Physically represents:
 
 In Bragg XPCS context: grain-boundary rearrangements, intermittent defect motion, phase-front breathing, or periodic strain accumulation. This term alone violates stationarity, hence the TTC structure.
 
-### 3. $\cos(\omega v)$: Base-frequency lag-time structure
+### 3. \(\cos(\omega v)\): Base-frequency lag-time structure
 
 In the product term, the lag-time factor is at **ω** (slower than the 2ω stripes):
 
-- Lag-time oscillation has period $T_\omega = 2\pi/\omega$
+- Lag-time oscillation has period \(T_\omega = 2\pi/\omega\)
 - Complements the 2ω term: two frequencies in the delay direction
 
 Physically suggests:
@@ -61,12 +61,12 @@ Physically suggests:
 
 Natural for: second-harmonic generation in the correlation, anharmonic motion, or detection sensitive to both ω and 2ω.
 
-### 4. Product structure: $\cos(2\omega u + \phi)\cos(\omega v)$
+### 4. Product structure: \(\cos(2\omega u + \phi)\cos(\omega v)\)
 
 Means lag-time correlations at ω are gated by mean-time modulation at 2ω. Produces:
 
 - Diamond or chequerboard TTC patterns
-- Oscillations localized in $u$
+- Oscillations localized in \(u\)
 - Masks where oscillations appear and disappear
 
 Matches observation that only specific masks around the Bragg peak show oscillations, the diagonal is not always strongest, and TTC shows repeating but localized structure.
@@ -86,7 +86,7 @@ So the correlation carries both a fundamental and its first harmonic—e.g. anha
 
 ### Why 2ω appears
 
-- **Intensity ∝ displacement²:** If the signal is quadratic in displacement $x(t) \sim \cos(\omega t)$, then $x^2 \sim \cos(2\omega t) + \text{const}$, so 2ω appears.
+- **Intensity ∝ displacement²:** If the signal is quadratic in displacement \(x(t) \sim \cos(\omega t)\), then \(x^2 \sim \cos(2\omega t) + \text{const}\), so 2ω appears.
 - **First harmonic:** Nonlinear or anharmonic dynamics excite 2ω alongside ω.
 
 Common in: anharmonic oscillators, intensity-sensitive detection, nonlinear coupling.
@@ -122,8 +122,8 @@ At a Bragg peak:
 - Intensity can depend quadratically on displacement, giving 2ω from ω motion
 
 The model is the minimal mathematical structure capturing:
-- Stationary dynamics (2ω in $v$)
-- Non-stationarity (2ω in $u$)
+- Stationary dynamics (2ω in \(v\))
+- Non-stationarity (2ω in \(u\))
 - Mode coupling (product term)
 - Two-frequency (ω and 2ω) temporal structure
 
@@ -138,12 +138,12 @@ If the two-frequency (ω and 2ω) structure is real (not a fitting artifact), th
 - Modulated term ties mean-time (2ω) and lag-time (ω and 2ω) together
 
 This also explains:
-- Why only some masks show oscillations (modulation in $u$)
+- Why only some masks show oscillations (modulation in \(u\))
 - Why TTC diagonals aren't always maximal
-- Why $g_2$ alone hides the physics
+- Why \(g_2\) alone hides the physics
 
 ---
 
 ## One-sentence takeaway
 
-The model uses ω (base) and 2ω (second harmonic): stripes and mean-time modulation at 2ω, with ω in the product’s delay factor and in the linked trace $I(t)$, consistent with anharmonic or intensity-quadratic dynamics and non-stationary TTC structure.
+The model uses ω (base) and 2ω (second harmonic): stripes and mean-time modulation at 2ω, with ω in the product’s delay factor and in the linked trace \(I(t)\), consistent with anharmonic or intensity-quadratic dynamics and non-stationary TTC structure.
