@@ -28,6 +28,13 @@ if __name__ == "__main__":
     # lib.compare_existing_ttc_and_ttc_from_raw()
     # lib.mask_roi_viewer_mp4_save()
     # lib.waterfall_roi_entrypoint()
+    lib.waterfall_lineout_frequency_entrypoint(
+        avg_m=2,
+        lineout_offset_x=10,
+        lp_freq=0.0005,
+        hp_freq=0.005,
+        phase_freq=0.00145,
+        )
     # lib.ttc_with_custom_mask()
     # lib.equal_q_map_ttc(n_rings=8)
 
@@ -38,7 +45,7 @@ if __name__ == "__main__":
     # lib.ttc_plotter(lib.h5_file)
     # lib.intensity_vs_time(lib.h5_file)
     # lib.static_vs_dynamic_bins(lib.h5_file)
-    lib.combined_plot(lib.h5_file)
+    # lib.combined_plot(lib.h5_file)
     # lib.oauth_test()
     # lib.figure_upload()
     # lib.q_spacing_inspector(lib.h5_file)

@@ -3053,6 +3053,463 @@ def waterfall_roi_entrypoint(
         run.close()
 
 
+def waterfall_lineout_frequency(
+    run: RunData,
+    *,
+    lineout_length: int = 120,
+    lineout_offset_x: int = 0,
+    crop_size: int = 300,
+    stride: int = 20,
+    dt_s: float = 1.0,
+    cmap_frame: str = "magma",
+    cmap_waterfall: str = "inferno",
+    log_eps: float = 1.0,
+    start_frame: int = 0,
+    avg_m: int = 0,
+    hp_freq: float = 0.0,
+    lp_freq: float | None = None,
+    phase_freq: float | None = None,
+):
+    """Interactive waterfall from a vertical lineout below the Bragg peak.
+
+    Left column (three rows + frame slider):
+      Top    — cropped detector frame with lineout column highlighted.
+      Middle — spatial lineout: intensity vs pixel offset for the selected frame.
+      Bottom — spatial FFT: power spectrum of the lineout above.
+
+    Right column (three rows + pixel-offset slider):
+      Top    — waterfall (kymograph): Y = pixel offset, X = time.
+               Red vertical line = selected frame, blue horizontal line =
+               selected pixel offset.
+      Middle — temporal lineout: intensity vs time at the selected pixel row
+               (averaged over ±avg_m adjacent rows, detrended + windowed +
+               bandpass filtered).
+      Bottom — temporal FFT: power spectrum of the trace above.
+
+    Parameters
+    ----------
+    run              : RunData with an open dset_raw handle.
+    lineout_length   : number of pixels in the vertical lineout (downward from peak).
+    lineout_offset_x : horizontal offset of the lineout column from the peak
+                       centre (positive = right, negative = left).
+    crop_size        : side of the square crop around the Bragg peak.
+    stride           : frame step for the waterfall (every Nth frame).
+    dt_s             : time per raw frame in seconds (x-axis).
+    cmap_frame       : colormap for the left frame panel.
+    cmap_waterfall   : colormap for the waterfall panel.
+    log_eps          : epsilon added before log10 to avoid log(0).
+    start_frame      : initial frame index shown.
+    avg_m            : half-width of spatial averaging for temporal traces.
+                       The trace at pixel row *px* is the mean of rows
+                       [px − avg_m, px + avg_m].  Pixel slider range is
+                       restricted to [avg_m, length − avg_m − 1].  0 = no averaging.
+    hp_freq          : high-pass cutoff in Hz. Frequencies below this are
+                       zeroed (removes slow drift / dominant low-frequency).
+                       0 = no high-pass.
+    lp_freq          : low-pass cutoff in Hz. Frequencies above this are
+                       zeroed.  If None, auto-set to 5× the dominant
+                       frequency detected from the mean spectrum.
+    """
+
+    def _read_frame2d(idx: int) -> np.ndarray:
+        fr = np.asarray(run.dset_raw[int(idx)])
+        if fr.ndim == 3 and fr.shape[0] == 1:
+            fr = fr[0]
+        return fr.astype(np.float64, copy=False)
+
+    def _find_peak_center(frame2d: np.ndarray) -> tuple[int, int]:
+        f = np.clip(frame2d, 0.0, None)
+        pos = f[f > 0]
+        clip_hi = (
+            float(np.percentile(pos, 99.9))
+            if pos.size
+            else (float(np.nanmax(f)) if np.isfinite(np.nanmax(f)) else 0.0)
+        )
+        f = np.minimum(f, clip_hi)
+        try:
+            from scipy.ndimage import uniform_filter
+            score = uniform_filter(f, size=21, mode="nearest")
+            flat = int(np.nanargmax(score))
+            cy, cx = np.unravel_index(flat, score.shape)
+        except Exception:
+            flat = int(np.nanargmax(f))
+            cy, cx = np.unravel_index(flat, f.shape)
+        return int(cy), int(cx)
+
+    # ---- data geometry ----
+    n_frames = int(run.dset_raw.shape[0])
+    if n_frames <= 0:
+        raise ValueError("Empty dataset: no frames")
+
+    frame0 = _read_frame2d(start_frame)
+    peak_cy, peak_cx = _find_peak_center(frame0)
+    H, W = frame0.shape
+
+    # Lineout column in full-detector coords: from peak_cy downward
+    lo_y0 = peak_cy
+    lo_y1 = min(H, peak_cy + lineout_length)
+    lo_x = int(np.clip(peak_cx + lineout_offset_x, 0, W - 1))
+    actual_length = lo_y1 - lo_y0
+
+    # Crop boundaries centred on peak
+    half = crop_size // 2
+    crop_y0 = max(0, peak_cy - half)
+    crop_y1 = min(H, peak_cy + half + (crop_size % 2))
+    crop_x0 = max(0, peak_cx - half)
+    crop_x1 = min(W, peak_cx + half + (crop_size % 2))
+
+    peak_cy_crop = peak_cy - crop_y0
+    peak_cx_crop = peak_cx - crop_x0
+
+    # Lineout endpoints in crop coordinates
+    lo_y0_crop = lo_y0 - crop_y0
+    lo_y1_crop = lo_y1 - crop_y0
+    lo_x_crop = lo_x - crop_x0
+    
+
+
+    frame_indices = np.arange(0, n_frames, stride)
+    n_wf = len(frame_indices)
+    times = frame_indices * dt_s
+
+    def _get_crop(frame_idx: int) -> np.ndarray:
+        fr = _read_frame2d(frame_idx)
+        return fr[crop_y0:crop_y1, crop_x0:crop_x1]
+
+    # ---- build waterfall ----
+    def _build_waterfall():
+        wf = np.zeros((actual_length, n_wf), dtype=np.float64)
+        for k, fi in enumerate(frame_indices):
+            fr = _read_frame2d(int(fi))
+            wf[:, k] = fr[lo_y0:lo_y1, lo_x]
+            if (k + 1) % 500 == 0:
+                print(f"  waterfall: processed {k+1}/{n_wf} frames")
+        return wf
+
+    print(f"Building lineout waterfall ({actual_length} px, {n_wf} frames, stride={stride}) ...")
+    wf = _build_waterfall()
+    print("  done.")
+
+    # ---- detect dominant frequency & build bandpass trace processor ----
+    from scipy.signal import detrend as _detrend
+    _ffreqs = np.fft.rfftfreq(n_wf, d=stride * dt_s)
+
+    # Low-pass cutoff
+    if lp_freq is not None:
+        _lp_cutoff = float(lp_freq)
+    else:
+        _mean_spectrum = np.abs(np.fft.rfft(wf, axis=1)).mean(axis=0)
+        _mean_spectrum[0] = 0.0
+        _dominant_bin = int(np.argmax(_mean_spectrum))
+        _dominant_freq = float(_ffreqs[_dominant_bin])
+        _lp_cutoff = 5.0 * _dominant_freq if _dominant_freq > 0 else float(_ffreqs[-1])
+        if _dominant_freq > 0:
+            print(f"  auto-detected dominant freq: {_dominant_freq:.4f} Hz  "
+                  f"(period ≈ {1.0/_dominant_freq:.1f} s)")
+
+    _lp_bin = min(int(np.searchsorted(_ffreqs, _lp_cutoff)), len(_ffreqs) - 1)
+
+    # High-pass cutoff
+    _hp_cutoff = float(hp_freq)
+    _hp_bin = int(np.searchsorted(_ffreqs, _hp_cutoff)) if _hp_cutoff > 0 else 0
+
+    if _hp_bin >= _lp_bin:
+        print(f"  WARNING: hp_freq ({_hp_cutoff:.5f} Hz) >= lp_freq ({_lp_cutoff:.5f} Hz) — swapping them")
+        _hp_cutoff, _lp_cutoff = _lp_cutoff, _hp_cutoff
+        _hp_bin, _lp_bin = (
+            int(np.searchsorted(_ffreqs, _hp_cutoff)) if _hp_cutoff > 0 else 0,
+            min(int(np.searchsorted(_ffreqs, _lp_cutoff)), len(_ffreqs) - 1),
+        )
+
+    print(f"  bandpass: HP = {_hp_cutoff:.5f} Hz (bin {_hp_bin})  |  "
+          f"LP = {_lp_cutoff:.5f} Hz (bin {_lp_bin}/{len(_ffreqs)})")
+
+    _hann = np.hanning(n_wf)
+
+    def _process_trace(trace: np.ndarray) -> np.ndarray:
+        """Detrend, Hann-window, and bandpass filter a temporal trace."""
+        t = _detrend(trace, type="linear")
+        t = t * _hann
+        ft = np.fft.rfft(t)
+        ft[:_hp_bin] = 0.0
+        ft[_lp_bin + 1 :] = 0.0
+        return np.fft.irfft(ft, n=len(trace))
+
+    # ---- dominant-frequency phase vs pixel row ----
+    filt_stack = np.array([_process_trace(wf[r, :]) for r in range(actual_length)])
+    fft_stack = np.fft.rfft(filt_stack, axis=1)
+    _fft_freqs_phase = np.fft.rfftfreq(n_wf, d=stride * dt_s)
+    if phase_freq is not None:
+        _dom_bin = int(np.argmin(np.abs(_fft_freqs_phase - phase_freq)))
+        _dom_bin = max(_dom_bin, 1)
+    else:
+        mean_power = np.mean(np.abs(fft_stack[:, 1:]) ** 2, axis=0)
+        _dom_bin = int(np.argmax(mean_power)) + 1
+    _dom_freq = _fft_freqs_phase[_dom_bin]
+    phase_vs_pixel = np.unwrap(np.angle(fft_stack[:, _dom_bin])) / (2 * np.pi)
+    print(f"  dominant freq = {_dom_freq:.6f} Hz (bin {_dom_bin}), "
+          f"phase range = {np.ptp(phase_vs_pixel):.2f} periods")
+
+    # ---- figure layout: 3 rows x 2 cols, sliders under each column ----
+    fig = plt.figure(figsize=(16, 8.5))
+    gs = fig.add_gridspec(
+        3, 2,
+        width_ratios=[1, 1],
+        height_ratios=[1, 1, 1],
+        hspace=0.45, wspace=0.30,
+        left=0.06, right=0.96, top=0.95, bottom=0.05,
+    )
+
+    # Left column: 3 plot rows + frame slider underneath
+    gs_left = gs[:, 0].subgridspec(4, 1, height_ratios=[1, 1, 1, 0.07], hspace=0.50)
+    ax_frame   = fig.add_subplot(gs_left[0])
+    ax_lineout = fig.add_subplot(gs_left[1])
+    ax_fft_lo  = fig.add_subplot(gs_left[2])
+    ax_slider_frame = fig.add_subplot(gs_left[3])
+
+    # Right column: waterfall + I(t) + FFT(t) + pixel slider underneath
+    gs_right = gs[:, 1].subgridspec(4, 1, height_ratios=[1, 1, 1, 0.07], hspace=0.50)
+    ax_wf      = fig.add_subplot(gs_right[0])
+    ax_time_lo = fig.add_subplot(gs_right[1])
+    ax_fft_t   = fig.add_subplot(gs_right[2])
+    ax_slider_px = fig.add_subplot(gs_right[3])
+
+    px_lo = avg_m
+    px_hi = actual_length - avg_m - 1
+    init_px = (px_lo + px_hi) // 2
+    state = {
+        "frame_idx": int(np.clip(start_frame, 0, n_frames - 1)),
+        "pixel_row": init_px,
+    }
+
+    def _avg_trace(px):
+        """Temporal trace at pixel *px*, averaged over ±avg_m rows."""
+        return wf[px - avg_m : px + avg_m + 1, :].mean(axis=0)
+
+    # ---- (0,0) top-left: frame + lineout overlay ----
+    crop0 = _get_crop(state["frame_idx"])
+    disp0 = np.log10(np.clip(crop0, 0.0, None) + log_eps)
+    im_frame = ax_frame.imshow(disp0, origin="upper", cmap=cmap_frame, interpolation="nearest")
+    ax_frame.set_xlabel("x (pixel)")
+    ax_frame.set_ylabel("y (pixel)")
+
+    divider = make_axes_locatable(ax_frame)
+    cax_frame = divider.append_axes("right", size="4%", pad=0.06)
+    fig.colorbar(im_frame, cax=cax_frame, label="log₁₀(I + ε)")
+
+    ax_frame.plot(
+        [lo_x_crop, lo_x_crop],
+        [lo_y0_crop, lo_y1_crop - 1],
+        color="cyan", linewidth=1.5, linestyle="--",
+    )
+    ax_frame.plot(peak_cx_crop, peak_cy_crop, "r+", markersize=10, markeredgewidth=1.5)
+    ax_frame.set_title(f"Frame {state['frame_idx']}/{n_frames-1}  |  lineout {actual_length} px", fontsize=9)
+
+    # ---- (1,0) mid-left: lineout intensity + dominant-freq phase vs pixel ----
+    fr0 = _read_frame2d(state["frame_idx"])
+    lineout0 = fr0[lo_y0:lo_y1, lo_x]
+    pixel_offsets = np.arange(actual_length)
+    (line_lo,) = ax_lineout.plot(pixel_offsets, lineout0, color="tab:blue", linewidth=1.0)
+    ax_lineout.set_xlabel("Pixel offset below peak")
+    ax_lineout.set_ylabel("Intensity", color="tab:blue")
+    ax_lineout.tick_params(axis="y", labelcolor="tab:blue")
+    ax_lineout.set_xlim(0, actual_length - 1)
+
+    ax_phase = ax_lineout.twinx()
+    ax_phase.plot(pixel_offsets, phase_vs_pixel,
+                  color="tab:green", linewidth=1.2, linestyle="--", alpha=0.85)
+    ax_phase.set_ylabel(f"Phase at {_dom_freq:.5f} Hz (periods)", color="tab:green", fontsize=8)
+    ax_phase.tick_params(axis="y", labelcolor="tab:green")
+
+    ax_lineout.set_title(f"Spatial lineout — frame {state['frame_idx']}", fontsize=9)
+
+    # ---- (2,0) bot-left: FFT power spectrum of lineout ----
+    fft_freqs_lo = np.fft.rfftfreq(actual_length, d=1.0)
+    fft_amp0 = np.abs(np.fft.rfft(lineout0))
+    (line_fft,) = ax_fft_lo.plot(fft_freqs_lo[1:], fft_amp0[1:], color="tab:orange", linewidth=1.0)
+    ax_fft_lo.set_xlabel("Spatial frequency (cycles/pixel)")
+    ax_fft_lo.set_ylabel("|FFT|")
+    ax_fft_lo.set_title(f"Spatial FFT — frame {state['frame_idx']}", fontsize=9)
+    ax_fft_lo.set_xlim(float(fft_freqs_lo[1]), float(fft_freqs_lo[-1]))
+
+    # ---- (0,1) top-right: waterfall ----
+    wf_log = np.log10(np.clip(wf, 0.0, None) + log_eps)
+    extent_wf = [times[0], times[-1], actual_length - 0.5, -0.5]
+
+    im_wf = ax_wf.imshow(
+        wf_log, aspect="auto", origin="upper", cmap=cmap_waterfall,
+        extent=extent_wf, interpolation="nearest",
+    )
+    ax_wf.set_xlabel("Time (s)")
+    ax_wf.set_ylabel("Pixel offset below peak")
+    ax_wf.set_title("Waterfall — vertical lineout from Bragg peak", fontsize=9)
+
+    div_wf = make_axes_locatable(ax_wf)
+    cax_wf = div_wf.append_axes("right", size="3%", pad=0.06)
+    fig.colorbar(im_wf, cax=cax_wf, label="log₁₀(I + ε)")
+
+    t_current = state["frame_idx"] * dt_s
+    vline_frame = ax_wf.axvline(t_current, color="red", linewidth=2.0, linestyle="--", alpha=0.8)
+    hline_px = ax_wf.axhline(state["pixel_row"], color="deepskyblue", linewidth=1.5, linestyle="-", alpha=0.8)
+
+    # ---- (1,1) mid-right: filtered temporal trace at selected pixel row ----
+    _raw_trace0 = _avg_trace(state["pixel_row"])
+    time_trace0 = _process_trace(_raw_trace0)
+    (line_time,) = ax_time_lo.plot(times, time_trace0, color="tab:blue", linewidth=1.0)
+    ax_time_lo.set_xlabel("Time (s)")
+    ax_time_lo.set_ylabel("Intensity (filtered)")
+    _avg_label = f" (±{avg_m} avg)" if avg_m > 0 else ""
+    ax_time_lo.set_title(f"Temporal lineout (filtered) — pixel {state['pixel_row']}{_avg_label}", fontsize=9)
+    ax_time_lo.set_xlim(times[0], times[-1])
+
+    # ---- (2,1) bot-right: FFT amplitude + phase of filtered trace ----
+    fft_freqs_t = np.fft.rfftfreq(n_wf, d=stride * dt_s)
+    fft_amp_t0 = np.abs(np.fft.rfft(time_trace0))
+
+    (line_fft_t,) = ax_fft_t.plot(fft_freqs_t[1:], fft_amp_t0[1:], color="tab:orange", linewidth=1.0)
+    ax_fft_t.set_xlabel("Temporal frequency (Hz)")
+    ax_fft_t.set_ylabel("|FFT|")
+    ax_fft_t.set_xlim(float(fft_freqs_t[1]), float(fft_freqs_t[-1]))
+
+    # Mark the bandpass window
+    ax_fft_t.axvspan(float(_ffreqs[_hp_bin]), float(_ffreqs[min(_lp_bin, len(_ffreqs) - 1)]),
+                     color="tab:green", alpha=0.08)
+    ax_fft_t.axvline(float(_ffreqs[_hp_bin]), color="tab:green", linewidth=0.7, linestyle=":", alpha=0.5)
+    ax_fft_t.axvline(float(_ffreqs[min(_lp_bin, len(_ffreqs) - 1)]),
+                     color="tab:green", linewidth=0.7, linestyle=":", alpha=0.5)
+
+    ax_fft_t.set_title(f"Temporal FFT (filtered) — pixel {state['pixel_row']}", fontsize=9)
+
+    # ---- sliders ----
+    s_frame = Slider(ax_slider_frame, "Frame", 0, n_frames - 1,
+                     valinit=state["frame_idx"], valstep=1, valfmt="%d")
+    s_pixel = Slider(ax_slider_px, "Pixel", px_lo, px_hi,
+                     valinit=state["pixel_row"], valstep=1, valfmt="%d")
+
+    # ---- redraw helpers ----
+    def _redraw_frame():
+        crop = _get_crop(state["frame_idx"])
+        disp = np.log10(np.clip(crop, 0.0, None) + log_eps)
+        im_frame.set_data(disp)
+        ax_frame.set_title(f"Frame {state['frame_idx']}/{n_frames-1}  |  lineout {actual_length} px", fontsize=9)
+        vline_frame.set_xdata([state["frame_idx"] * dt_s] * 2)
+
+        fr = _read_frame2d(state["frame_idx"])
+        lineout = fr[lo_y0:lo_y1, lo_x]
+
+        line_lo.set_ydata(lineout)
+        lo_min, lo_max = float(np.nanmin(lineout)), float(np.nanmax(lineout))
+        ax_lineout.set_ylim(lo_min - 0.5, lo_max * 1.05 + 0.5)
+        ax_lineout.set_title(f"Spatial lineout — frame {state['frame_idx']}", fontsize=9)
+
+        fft_amp = np.abs(np.fft.rfft(lineout))
+        line_fft.set_ydata(fft_amp[1:])
+        ax_fft_lo.set_ylim(0, float(np.nanmax(fft_amp[1:])) * 1.05 + 0.5)
+        ax_fft_lo.set_title(f"Spatial FFT — frame {state['frame_idx']}", fontsize=9)
+
+        fig.canvas.draw_idle()
+
+    def _redraw_pixel():
+        px = state["pixel_row"]
+        hline_px.set_ydata([px, px])
+
+        trace = _process_trace(_avg_trace(px))
+        line_time.set_ydata(trace)
+        t_min, t_max = float(np.nanmin(trace)), float(np.nanmax(trace))
+        margin = max(abs(t_min), abs(t_max)) * 0.1 + 0.5
+        ax_time_lo.set_ylim(t_min - margin, t_max + margin)
+        ax_time_lo.set_title(f"Temporal lineout (filtered) — pixel {px}{_avg_label}", fontsize=9)
+
+        fft_a = np.abs(np.fft.rfft(trace))
+
+        line_fft_t.set_ydata(fft_a[1:])
+        ax_fft_t.set_ylim(0, float(np.nanmax(fft_a[1:])) * 1.05 + 0.5)
+
+        ax_fft_t.set_title(f"Temporal FFT (filtered) — pixel {px}", fontsize=9)
+
+        fig.canvas.draw_idle()
+
+    def on_frame_slider(val):
+        state["frame_idx"] = int(round(val))
+        _redraw_frame()
+    s_frame.on_changed(on_frame_slider)
+
+    def on_pixel_slider(val):
+        state["pixel_row"] = int(round(val))
+        _redraw_pixel()
+    s_pixel.on_changed(on_pixel_slider)
+
+    def on_key(event):
+        if event.key in ("right", "d"):
+            state["frame_idx"] = min(n_frames - 1, state["frame_idx"] + 1)
+        elif event.key in ("left", "a"):
+            state["frame_idx"] = max(0, state["frame_idx"] - 1)
+        elif event.key == "home":
+            state["frame_idx"] = 0
+        elif event.key == "end":
+            state["frame_idx"] = n_frames - 1
+        elif event.key == "up":
+            state["pixel_row"] = max(px_lo, state["pixel_row"] - 1)
+            s_pixel.set_val(state["pixel_row"])
+            _redraw_pixel()
+            return
+        elif event.key == "down":
+            state["pixel_row"] = min(px_hi, state["pixel_row"] + 1)
+            s_pixel.set_val(state["pixel_row"])
+            _redraw_pixel()
+            return
+        else:
+            return
+        s_frame.set_val(state["frame_idx"])
+        _redraw_frame()
+    fig.canvas.mpl_connect("key_press_event", on_key)
+
+    plt.show()
+
+
+def waterfall_lineout_frequency_entrypoint(
+    *,
+    scan_id: str | None = None,
+    base_dir: Path | None = None,
+    lineout_length: int = 120,
+    lineout_offset_x: int = 0,
+    crop_size: int = 300,
+    stride: int = 20,
+    dt_s: float = 1.0,
+    avg_m: int = 0,
+    hp_freq: float = 0.0,
+    lp_freq: float | None = None,
+    phase_freq: float | None = None,
+):
+    """Load raw data and launch waterfall_lineout_frequency viewer."""
+    scan = scan_id if scan_id is not None else SAMPLE_ID
+    if base_dir is None:
+        base_dir = _resolve_base_dir(scan)
+    else:
+        base_dir = Path(base_dir)
+
+    try:
+        run = load_run_data(base_dir, scan, mask_n=MASK_N)
+    except FileNotFoundError:
+        run = load_raw_data_only(base_dir, scan)
+
+    try:
+        waterfall_lineout_frequency(
+            run,
+            lineout_length=lineout_length,
+            lineout_offset_x=lineout_offset_x,
+            crop_size=crop_size,
+            stride=stride,
+            dt_s=dt_s,
+            avg_m=avg_m,
+            hp_freq=hp_freq,
+            lp_freq=lp_freq,
+            phase_freq=phase_freq,
+        )
+    finally:
+        run.close()
+
+
 def mask_roi_viewer_mp4_save(
     *,
     stride: int = 20,

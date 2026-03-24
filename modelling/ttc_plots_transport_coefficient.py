@@ -322,7 +322,8 @@ def example_heterodyne_params(
         T_t = np.maximum(T_t, 1.0)  # avoid div by zero
         v = 2.0 * np.pi / (q * T_t)
         # Extra amplitude modulation on top of T(t) (independent period v_period_s).
-        v = v * (1.0 + v_amp_frac * (1 + np.cos(2.0 * np.pi * t / 4800) )* np.cos(2.0 * np.pi * t / v_period_s))
+        v = v * (1.0 + v_amp_frac * np.cos(2.0 * np.pi * t / v_period_s))
+        # v = v * (1.0 + v_amp_frac * (1 + np.cos(2.0 * np.pi * t / 1200) )* np.cos(2.0 * np.pi * t / v_period_s))
         # v = v * (1.0 + v_amp_frac)
         v = np.maximum(v, 1e-6 * v_mean)
 
