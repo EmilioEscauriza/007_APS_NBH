@@ -4,7 +4,9 @@
 # Library: workflow_lib.py (merged raw_data_inspection + analysis + google_sheet_upload + correlation_analysis)
 # ============================================================
 
+from re import L
 import sys
+sys.dont_write_bytecode = True
 from pathlib import Path
 
 # Ensure this directory is on the path so aps_workflow_lib can import workflow_config, source_functions, etc.
@@ -20,6 +22,14 @@ if __name__ == "__main__":
     # ---- raw_data_inspection ----
     # lib.data_structure_viewer()
     # lib.rocking_curve_data_structure_viewer()
+    # lib.rocking_curve_viewer()
+    # lib.rocking_curve_waterfall_lineout_frequency(
+    #     dt_s=0.5,
+    #     lineout_offset_x=10,
+    #     hp_freq=0.1,
+    #     lp_freq=0.5,
+    #     sp_lp_freq=0.5,
+    # )
     # lib.rocking_curve_rsm()
     # lib.raw_mask_oscillation_inspector()
     # lib.comparison_of_corr_and_g_ttc_plot_methods()
@@ -28,13 +38,17 @@ if __name__ == "__main__":
     # lib.compare_existing_ttc_and_ttc_from_raw()
     # lib.mask_roi_viewer_mp4_save()
     # lib.waterfall_roi_entrypoint()
-    lib.waterfall_lineout_frequency_entrypoint(
-        avg_m=2,
-        lineout_offset_x=10,
-        lp_freq=0.0005,
-        hp_freq=0.005,
-        phase_freq=0.00145,
-        )
+    # lib.waterfall_lineout_frequency_entrypoint(
+    #     dt_s=0.5,
+    #     avg_m=2,
+    #     lineout_offset_x=9,
+    #     hp_freq=0.001,
+    #     lp_freq=0.01,
+    #     phase_freq=0.0029,
+    #     sp_hp_freq=0.04,
+    #     sp_lp_freq=0.2,
+    #     sp_phase_freq=0.06,
+    #     )
     # lib.ttc_with_custom_mask()
     # lib.equal_q_map_ttc(n_rings=8)
 
@@ -82,5 +96,10 @@ if __name__ == "__main__":
     # lib.spatial_scale_demo_plot(xray_energy_keV=12.4)
     # lib.normalisation_comparison()
     # lib.mask_partition_investigation(n_cols=4, n_rows=4)
+
+    # ---- november 2024 double peak analysis ----
+    # lib.nov2024_run_data_inspector()
+    # lib.nov2024_raw_frame_viewer()
+    lib.nov2024_roi_g2_analysis()
 
     pass
